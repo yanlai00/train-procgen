@@ -1,3 +1,6 @@
+import os
+from os.path import join
+import json
 import tensorflow as tf
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
@@ -13,7 +16,7 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-LOG_DIR = '/tmp/procgen'
+LOG_DIR = 'log/vanilla/train'
 
 def main():
     num_envs = 64
@@ -25,18 +28,24 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 50_000_000
+    timesteps_per_proc = 500_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
-    parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--num_levels', type=int, default=0)
+    parser.add_argument('--env_name', type=str, default='fruitbot')
+    parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
+    parser.add_argument('--run_id', type=int, default=0)
+    parser.add_argument('--nupdates', type=int, default=0)
 
     args = parser.parse_args()
-
+    args.total_tsteps = timesteps_per_proc
+    if args.nupdates:
+        timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
+    run_ID = 'run_'+str(args.run_id).zfill(2)
+    
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -51,8 +60,17 @@ def main():
     num_levels = 0 if is_test_worker else args.num_levels
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
-    format_strs = ['csv', 'stdout'] if log_comm.Get_rank() == 0 else []
+    format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
     logger.configure(dir=LOG_DIR, format_strs=format_strs)
+
+    logpath = join(LOG_DIR, run_ID)
+    if not os.path.exists(logpath):
+        os.system("mkdir -p %s" % logpath)
+        
+    fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
+    with open(fpath, 'w') as fh:
+        json.dump(vars(args), fh, indent=4, sort_keys=True)
+    print("\nSaved args at:\n\t{}\n".format(fpath))
 
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)

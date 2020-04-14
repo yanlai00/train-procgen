@@ -29,7 +29,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 200_000
+    timesteps_per_proc = 500_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -63,6 +63,7 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
+    logger.configure(dir=logpath, format_strs=format_strs)
 
     logpath = join(LOG_DIR, run_ID)
     if not os.path.exists(logpath):
@@ -72,8 +73,6 @@ def main():
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     print("\nSaved args at:\n\t{}\n".format(fpath))
-
-    logger.configure(dir=logpath, format_strs=format_strs)
 
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
@@ -111,8 +110,8 @@ def main():
         cliprange=lambda f : f * 0.2,
         # update_fn=None,
         # init_fn=None,
-	    #save_path="log/saved_random.tar",
-        load_path="log/saved_random.tar",
+	    save_path="log/saved_random.tar",
+        load_path=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
     )

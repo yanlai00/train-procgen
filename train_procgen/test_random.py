@@ -1,6 +1,7 @@
 import os
 from os.path import join
 import json
+import numpy as np 
 import tensorflow as tf
 # from baselines.ppo2 import ppo2
 
@@ -21,7 +22,7 @@ import argparse
 
 import train_procgen
 from train_procgen.policies import RandomCnnPolicy 
-from train_procgen.random_ppo import Model, Runner
+from train_procgen.random_ppo import Model, Runner, safemean
 from collections import deque
 
 
@@ -37,7 +38,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    total_timesteps = 200_000 ## now this counts steps in testing runs
+    total_timesteps = 100_000 ## now this counts steps in testing runs
     use_vf_clipping = True
 
     ## From random_ppo.py
@@ -54,7 +55,7 @@ def main():
     ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=50) 
     parser.add_argument('--run_id', type=int, default=0)
-    parser.add_argument('--nrollouts', '-nroll', type=int, default=1)
+    parser.add_argument('--nrollouts', '-nroll', type=int, default=0)
 
     args = parser.parse_args()
     args.total_timesteps = total_timesteps
@@ -118,9 +119,10 @@ def main():
     logger.info("Model pramas loaded from save")
     runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
 
+    epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)
     # tfirststart = time.time() ## Not doing timing yet
-    active_ep_buf = epinfobuf100
+    # active_ep_buf = epinfobuf100
 
     mean_rewards = []
     datapoints = []
@@ -128,20 +130,27 @@ def main():
         logger.info('collecting rollouts {}...'.format(rollout))
         clean_flag = 1 ## since we are testiing, disable randomization
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
+        epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)
 
+        rew_mean_10 = safemean([epinfo['r'] for epinfo in epinfobuf10])
         rew_mean_100 = safemean([epinfo['r'] for epinfo in epinfobuf100])
-        ep_len_mean = np.nanmean([epinfo['l'] for epinfo in active_ep_buf])
-        logger.info('\n----', update)
-        mean_rewards.append(rew_mean_100)
+        ep_len_mean_10 = np.nanmean([epinfo['l'] for epinfo in epinfobuf10])
+        ep_len_mean_100 = np.nanmean([epinfo['l'] for epinfo in epinfobuf100])
 
-        logger.logkv('eplenmean', ep_len_mean)
-        logger.logkv('eprew', rew_mean_100)
+        logger.info('\n----', rollout)
+        mean_rewards.append(rew_mean_10)
+        logger.logkv('eprew10', rew_mean_10)
+        logger.logkv('eprew100', rew_mean_100)
+        logger.logkv('eplenmean10', ep_len_mean_10)
+        logger.logkv('eplenmean100', ep_len_mean_100)
         logger.logkv("misc/total_timesteps", rollout*nbatch)
 
         logger.info('----\n')
         logger.dumpkvs()
     env.close()
+
+    print("Rewards history: ", mean_rewards)
     return mean_rewards
 
 if __name__ == '__main__':

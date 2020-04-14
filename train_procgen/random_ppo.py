@@ -389,18 +389,23 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
         if update % log_interval == 0 or update == 1:
             step = update*nbatch
             #rew_mean_10 = utils.process_ep_buf(active_ep_buf, tb_writer=tb_writer, suffix='', step=step)
+
             rew_mean_10 = safemean([epinfo['r'] for epinfo in epinfobuf10])
-            ep_len_mean = np.nanmean([epinfo['l'] for epinfo in active_ep_buf])
+            rew_mean_100 = safemean([epinfo['r'] for epinfo in epinfobuf100])
+            ep_len_mean_10 = np.nanmean([epinfo['l'] for epinfo in epinfobuf10])
+            ep_len_mean_100 = np.nanmean([epinfo['l'] for epinfo in epinfobuf100])
             
             logger.info('\n----', update)
 
             mean_rewards.append(rew_mean_10)
             datapoints.append([step, rew_mean_10])
+            mean_rewards.append(rew_mean_10)
+            logger.logkv('eprew10', rew_mean_10)
+            logger.logkv('eprew100', rew_mean_100)
+            logger.logkv('eplenmean10', ep_len_mean_10)
+            logger.logkv('eplenmean100', ep_len_mean_100)
 
-            #tb_writer.log_scalar(ep_len_mean, 'ep_len_mean')
-            logger.logkv('eplenmean', ep_len_mean)
-            #tb_writer.log_scalar(fps, 'fps')
-
+            
             #logger.info('time_elapsed', tnow - tfirststart, run_t_total, train_t_total)
             logger.logkv('misc/total_time_elapsed', tnow - tfirststart)
             logger.logkv('misc/run_t_total', run_t_total)
@@ -409,15 +414,9 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
             #logger.info('timesteps', update*nsteps, total_timesteps)
             logger.logkv("misc/total_timesteps", update*nbatch)
             logger.logkv("misc/serial_timesteps", update*nsteps)
-            #logger.info('eplenmean', ep_len_mean) instead:
-            logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in active_ep_buf]))
-            #logger.info('eprew', rew_mean_10)
-            logger.logkv('eprew', rew_mean_10)
+            
             #logger.info('fps', fps)
             logger.logkv("fps", fps)
-            #logger.info('total_timesteps', update*nbatch)
-            logger.logkv("misc/total_timesteps", update*nbatch)
-            #logger.info([epinfo['r'] for epinfo in epinfobuf10])
 
             if len(mblossvals):
                 for (lossval, lossname) in zip(lossvals, model.loss_names):
