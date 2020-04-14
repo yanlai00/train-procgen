@@ -18,6 +18,7 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/random_log/train'
+SAVE_PATH = "log/saved_random.tar"
 
 def main():
     num_envs = 64
@@ -110,7 +111,7 @@ def main():
         cliprange=lambda f : f * 0.2,
         # update_fn=None,
         # init_fn=None,
-	    save_path="log/saved_random.tar",
+	    save_path=SAVE_PATH,
         load_path=None,
         vf_coef=0.5,
         max_grad_norm=0.5,

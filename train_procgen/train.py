@@ -17,6 +17,7 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/vanilla/train'
+SAVE_PATH = "log/"#saved_vanilla.tar"
 
 def main():
     num_envs = 64
@@ -84,7 +85,7 @@ def main():
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.ConfigProto()
+    config = tf.ConfigProto(device_count={'GPU':0})
     config.gpu_options.allow_growth = True #pylint: disable=E1101
     sess = tf.Session(config=config)
     sess.__enter__()
@@ -92,7 +93,7 @@ def main():
     conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
 
     logger.info("training")
-    ppo2.learn(
+    model = ppo2.learn(
         env=venv,
         network=conv_fn,
         total_timesteps=timesteps_per_proc,
@@ -109,11 +110,13 @@ def main():
         comm=comm,
         lr=learning_rate,
         cliprange=clip_range,
+        load_path=None,
         update_fn=None,
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
     )
+    model.save(SAVE_PATH)
 
 if __name__ == '__main__':
     main()
