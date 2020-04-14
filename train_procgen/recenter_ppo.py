@@ -191,8 +191,16 @@ class Runner(AbstractEnvRunner):
         super().__init__(env=env, model=model, nsteps=nsteps)
         self.lam = lam
         self.gamma = gamma
-        
+        self.obs = recenter(self.obs)
 
+    def recenter(obs):
+        """
+        Takes in original obs and recenter to agent-centric
+        """
+        logger.info("obs input type", type(obs))
+        print(obs.shape)
+        recentered = obs
+        return recentered
     def run(self, clean_flag):
         # Here, we init the lists that will contain the mb of experiences
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]

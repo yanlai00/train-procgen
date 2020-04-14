@@ -17,7 +17,7 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/vanilla/train'
-SAVE_PATH = "log/"#saved_vanilla.tar"
+SAVE_PATH = "log/saved_vanilla.tar"
 
 def main():
     num_envs = 64
@@ -73,6 +73,7 @@ def main():
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     print("\nSaved args at:\n\t{}\n".format(fpath))
 
+    logger.info("saving to filename ",SAVE_PATH)
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
