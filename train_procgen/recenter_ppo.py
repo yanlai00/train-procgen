@@ -1,9 +1,12 @@
 import time
 import joblib
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
-from train_procgen.policies import RandomCnnPolicy
+from train_procgen.policies import RandomCnnPolicy ## NOTE: subclass this instead of standard CNN!!
+from policies import random_impala_cnn
+from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.models import build_impala_cnn
 from baselines.common.policies import build_policy
 from baselines import logger
@@ -18,13 +21,177 @@ from mpi4py import MPI
 from baselines.common.runners import AbstractEnvRunner
 from baselines.common.tf_util import initialize
 from baselines.common.mpi_util import sync_from_root
+from baselines.common.distributions import make_pdtype
+
+## (4, 3, 3) normalized bot patch for recentering 
+BOT_NORM = np.array([[[0.15532861, 0.15149334, 0.14286397],
+        [0.16204034, 0.15916389, 0.14478161],
+        [0.18217553, 0.17738144, 0.15820507]],
+
+       [[0.16683444, 0.16683444, 0.16683444],
+        [0.1802579 , 0.18121672, 0.1754638 ],
+        [0.15341098, 0.15341098, 0.14190515]],
+
+       [[0.16012271, 0.1649168 , 0.17066971],
+        [0.15820507, 0.16204034, 0.16299916],
+        [0.16971089, 0.17450499, 0.16875207]],
+
+       [[0.16587562, 0.1754638 , 0.18505199],
+        [0.15532861, 0.16395798, 0.16875207],
+        [0.17929908, 0.18888727, 0.18984608]]])
 
 ## mentioned in paper imported from Config
+DROPOUT = 0.0
 L2_WEIGHT = 10e-4
 FM_COEFF = 0.002
 REAL_THRES = 0.1 # clean inputs are used with this probability α  
 ## Deleted MPIAdamoptimizer, needed when comm.Get_size() > 1 (rn ==1)
+def impala_cnn(images, depths=[16, 32, 32]):
+    """
+    Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 
+    Importance Weighted Actor-Learner Architectures" https://arxiv.org/abs/1802.01561
+    """
+    #use_batch_norm = Config.USE_BATCH_NORM == 1 NOTE: Should prob. use this???
+    use_batch_norm = True
 
+    dropout_layer_num = [0]
+    dropout_assign_ops = []
+
+    def dropout_layer(out):
+        if DROPOUT > 0:
+            out_shape = out.get_shape().as_list()
+            num_features = np.prod(out_shape[1:])
+
+            var_name = 'mask_' + str(dropout_layer_num[0])
+            batch_seed_shape = out_shape[1:]
+            batch_seed = tf.get_variable(var_name, shape=batch_seed_shape, initializer=tf.random_uniform_initializer(minval=0, maxval=1), trainable=False)
+            batch_seed_assign = tf.assign(batch_seed, tf.random_uniform(batch_seed_shape, minval=0, maxval=1))
+            dropout_assign_ops.append(batch_seed_assign)
+
+            curr_mask = tf.sign(tf.nn.relu(batch_seed[None,...] - DROPOUT))
+
+            curr_mask = curr_mask * (1.0 / (1.0 - DROPOUT))
+
+            out = out * curr_mask
+
+        dropout_layer_num[0] += 1
+
+        return out
+
+    def conv_layer(out, depth):
+        out = tf.layers.conv2d(out, depth, 3, padding='same')
+        out = dropout_layer(out)
+
+        if use_batch_norm:
+            out = tf.contrib.layers.batch_norm(out, center=True, scale=True, is_training=True)
+
+        return out
+
+    def residual_block(inputs):
+        depth = inputs.get_shape()[-1].value
+        
+        out = tf.nn.relu(inputs)
+
+        out = conv_layer(out, depth)
+        out = tf.nn.relu(out)
+        out = conv_layer(out, depth)
+        return out + inputs
+
+    def conv_sequence(inputs, depth):
+        out = conv_layer(inputs, depth)
+        out = tf.layers.max_pooling2d(out, pool_size=3, strides=2, padding='same')
+        out = residual_block(out)
+        out = residual_block(out)
+        return out
+
+    out = images
+    for depth in depths:
+        out = conv_sequence(out, depth)
+
+    out = tf.layers.flatten(out)
+    out = tf.nn.relu(out)
+    out = tf.layers.dense(out, 256, activation=tf.nn.relu)
+
+    return out, dropout_assign_ops
+
+def observation_input(ob_space, batch_size=None, name='Ob'):
+    from gym.spaces import Discrete, Box, MultiDiscrete
+    from baselines.common.input import encode_observation
+    """
+    Modified from baselines to reshape input obs
+    """
+    assert isinstance(ob_space, Discrete) or isinstance(ob_space, Box) or isinstance(ob_space, MultiDiscrete), \
+        'Baselines only deal with Discrete and Box observation spaces'
+    dtype = ob_space.dtype
+    if dtype == np.int8:
+        dtype = np.uint8
+    # Original: placeholder = tf.placeholder(shape=(batch_size,) + ob_space.shape, dtype=dtype, name=name)
+    #shape = (ob_space.shape[0], ob_space.shape[1], ob_space.shape[2])
+    shape = (64, 64*2, 3)
+    placeholder = tf.placeholder(shape=(batch_size,) + shape, dtype=dtype, name=name)
+    return placeholder, encode_observation(ob_space, placeholder)
+
+class RecenterCnnPolicy(RandomCnnPolicy): ## Not considering color_transform!
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
+        self.pdtype = make_pdtype(ac_space)
+        X, processed_x = observation_input(ob_space, nbatch)
+        ## X:Tensor("Ob:0", shape=(320, 64, 64, 3), dtype=uint8)
+        # Tensor("ToFloat:0", shape=(320, 64, 64, 3), dtype=float32)
+        scaled_images = tf.cast(processed_x, tf.float32) / 255.
+        mc_index = tf.placeholder(tf.int64, shape=[1], name='mc_index')
+        
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):    
+            h, self.dropout_assign_ops = random_impala_cnn(scaled_images)    
+            vf = fc(h, 'v', 1)[:,0]
+            self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
+            
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+            clean_h, _ = impala_cnn(scaled_images)
+            clean_vf = fc(clean_h, 'v', 1)[:,0]
+            self.clean_pd, self.clean_pi = self.pdtype.pdfromlatent(clean_h, init_scale=0.01)
+        
+        a0 = self.pd.sample()
+        neglogp0 = self.pd.neglogp(a0)
+        
+        clean_a0 = self.clean_pd.sample()
+        clean_neglogp0 = self.clean_pd.neglogp(clean_a0)
+        
+        self.initial_state = None
+            
+        def step(ob, *_args, **_kwargs):
+            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            return a, v, self.initial_state, neglogp
+        
+        def value(ob, *_args, **_kwargs):
+            return sess.run(vf, {X:ob})
+        
+        def step_with_clean(flag, ob, *_args, **_kwargs):
+            a, v, neglogp, c_a, c_v, c_neglogp \
+            = sess.run([a0, vf, neglogp0, clean_a0, clean_vf, clean_neglogp0], {X:ob})
+            if flag:
+                return c_a, c_v, self.initial_state, c_neglogp
+            else:
+                return a, v, self.initial_state, neglogp
+            
+        def value_with_clean(flag, ob, *_args, **_kwargs):
+            v, c_v = sess.run([vf, clean_vf], {X:ob})
+            if flag:
+                return c_v
+            else:
+                return v
+            
+        self.X = X
+        self.H = h
+        self.CH = clean_h
+        self.vf = vf
+        self.clean_vf =clean_vf
+        
+        self.step = step
+        self.value = value
+        self.step_with_clean = step_with_clean
+        self.value_with_clean = value_with_clean
+        
+        
 class Model(object):
     def __init__(self, *, policy, ob_space, ac_space, nbatch_act, nbatch_train,
                 nsteps, ent_coef, vf_coef, max_grad_norm):
@@ -186,26 +353,46 @@ class Model(object):
         #     initialize()
         initialize()
 
+def recenter(obs, bot_norm):
+    """
+    Takes in original obs and recenter to agent-centric
+    """
+    recentered = []
+    for i in range(obs.shape[0]): ## iterate through envs
+        one_obs = obs[i]
+        piece = np.transpose(one_obs[:][57:57+4][:], (1,0,2))
+        bg = np.zeros((64*2, 64, 3), dtype=np.uint8)
+        diff_min = 100
+        loc_min = -1
+        for loc in range(64-3):
+            block = piece[loc:loc+3]
+            block = np.transpose(block, (1,0,2))
+            diff = abs(np.sum(bot_norm - block/np.linalg.norm(block)))
+            if diff < diff_min:
+                diff_min = diff
+                loc_min = loc
+        blk = piece[loc_min:loc_min+3]
+        #print("detected loc: ", loc_min)
+        center = 62 - loc_min
+        bg[center:center+64] = one_obs.transpose((1,0,2))
+        recentered.append(bg.transpose((1,0,2)))
+    recentered = np.array(recentered)
+    return recentered
+
 class Runner(AbstractEnvRunner):
     def __init__(self, *, env, model, nsteps, gamma, lam):
         super().__init__(env=env, model=model, nsteps=nsteps)
         self.lam = lam
         self.gamma = gamma
-        self.obs = recenter(self.obs)
+        self.obs = recenter(self.obs, BOT_NORM)
+        # plt.imsave("recentered0.jpg", self.obs[0]) Sanity check!
 
-    def recenter(obs):
-        """
-        Takes in original obs and recenter to agent-centric
-        """
-        logger.info("obs input type", type(obs))
-        print(obs.shape)
-        recentered = obs
-        return recentered
     def run(self, clean_flag):
         # Here, we init the lists that will contain the mb of experiences
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
         mb_states = self.states
         epinfos = []
+        
         # For n in range number of steps
         for _ in range(self.nsteps):
             # Given observations, get action value and neglopacs
@@ -221,7 +408,8 @@ class Runner(AbstractEnvRunner):
 
             # Take actions in env and look the results
             # Infos contains a ton of useful informations
-            self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            self.obs, rewards, self.dones, infos = self.env.step(actions)
+            self.obs = recenter(self.obs, BOT_NORM)
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
@@ -291,7 +479,7 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
     nbatch = nenvs * nsteps
     
     nbatch_train = nbatch // nminibatches
-    policy = RandomCnnPolicy
+    policy = RecenterCnnPolicy
     model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
@@ -340,7 +528,8 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
         logger.info('collecting rollouts...')
         run_tstart = time.time()
         sess.run(init_rand) # re-initialize the parameters of random networks
-        clean_flag = np.random.rand(1)[0] > REAL_THRES ##
+        # clean_flag = np.random.rand(1)[0] > REAL_THRES NOTE: always use 1 for now!
+        clean_flag = 1
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)

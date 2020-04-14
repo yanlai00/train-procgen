@@ -1,5 +1,7 @@
 __pycache__/
 log/*
+*.jpg
+.ipynb_checkpoints/
 .build*/
 .generated/
 *.egg-info/

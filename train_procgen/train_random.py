@@ -64,11 +64,10 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=logpath, format_strs=format_strs)
-
     logpath = join(LOG_DIR, run_ID)
     if not os.path.exists(logpath):
         os.system("mkdir -p %s" % logpath)
+    logger.configure(dir=logpath, format_strs=format_strs)
 
     fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:

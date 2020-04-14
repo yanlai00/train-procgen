@@ -22,7 +22,7 @@ import argparse
 import numpy as np 
 from train_procgen.random_ppo import safemean
 
-LOG_DIR = 'log/vanilla/train'
+LOG_DIR = 'log/vanilla/test'
 LOAD_PATH = "log/saved_vanilla.tar"
 def main():
     num_envs = 64
