@@ -87,7 +87,7 @@ def main():
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.compat.v1.ConfigProto()
+    config = tf.compat.v1.ConfigProto(device_count={'GPU':0})
     config.gpu_options.allow_growth = True #pylint: disable=E1101
     sess = tf.compat.v1.Session(config=config)
     sess.__enter__()

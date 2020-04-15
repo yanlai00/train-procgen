@@ -1,3 +1,8 @@
+"""
+Procgen training script, baselines style
+Mimicing OpenAI train-procgen repo, see https://github.com/openai/train-procgen/blob/master/train_procgen/train.py
+I used the above code to train the vanilla ppo agent
+"""
 import os
 from os.path import join
 import json
@@ -18,7 +23,8 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/random_log/train'
-SAVE_PATH = "log/saved_random.tar"
+#SAVE_PATH = 'log/saved_random.tar'
+SAVE_PATH = 'log/sanity_random.tar'
 
 def main():
     num_envs = 64
@@ -72,7 +78,9 @@ def main():
     fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
-    print("\nSaved args at:\n\t{}\n".format(fpath))
+    logger.info("\n Saving to file {}".format(SAVE_PATH))
+    logger.info("\nSaved args at:\n\t{}\n".format(fpath))
+    
 
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 

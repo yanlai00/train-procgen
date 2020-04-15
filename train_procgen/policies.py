@@ -1,17 +1,15 @@
 """
 Source: 
-    Kimin Lee's code https://github.com/pokaxpoka/netrand 
+    Kimin's code https://github.com/pokaxpoka/netrand/blob/master/sources/policies.py 
 Usage: 
     see train-procgen/random_ppo.py
 TODO:
-    1) Save and visualize some observations during training (see scaled_images in RandomCNNPolicy, etc)
-    2) want "bigger IMPALA-CNN x 4" ? (I think 4 is increasing channel size)
+    1) want "bigger IMPALA-CNN x 4" ? (I think 4 is increasing channel size)
         When we scale the number of IMPALA channels by k, we also scale the learning rate by 1/√k
-    3) try a grayscale input: change "num_colors = 1"
 
-
-Note: 
-    their paper used this code to also implement other related methods so that they can show out-performance,
+NOTE:
+    1) again, openai/coinrun Configs are replaced with hard-coded global variables
+    Kimin's paper used this code to also implement other related methods to show out-performance,
     what we actually need for now are random_impala_cnn() and class RandomCnnPolicy
 """
 import numpy as np
@@ -19,11 +17,13 @@ import tensorflow as tf
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.distributions import make_pdtype
 from baselines.common.input import observation_input
-#from coinrun.config import Config
+# from coinrun.config import Config 
+## Hard-coding:###
 DROPOUT = 0.0
 ARCHITECTURE =  'impala'
 USE_COLOR_TRANSFORM = 0
 USE_BATCH_NORM = 0
+##################
 def impala_cnn(images, depths=[16, 32, 32]):
     """
     Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 

@@ -1,3 +1,11 @@
+"""
+Taking Kimin's netrand code https://github.com/pokaxpoka/netrand/blob/master/sources/random_ppo2.py
+and replacing openai/coinrun Configs with hard-coded params to fit openai/procgen env
+
+To simplify things, I didn't copy the choose_cnn logics, only import RandomCnnPolicy 
+from policies.py and always build random cnn policy here.
+"""
+
 import time
 import joblib
 import numpy as np
@@ -333,6 +341,10 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
         run_tstart = time.time()
         sess.run(init_rand) # re-initialize the parameters of random networks
         clean_flag = np.random.rand(1)[0] > REAL_THRES ##
+        ## NOTE: for sanity check (aka always run clean), do 
+        clean_flag = 1
+        if update == 1:
+            logger.info("clean_flag set to 1 for sanity check")
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)
