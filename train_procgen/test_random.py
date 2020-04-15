@@ -19,7 +19,6 @@ from mpi4py import MPI
 import argparse
 
 ## random_ppo imports
-
 import train_procgen
 from train_procgen.policies import RandomCnnPolicy 
 from train_procgen.random_ppo import Model, Runner, safemean
@@ -27,7 +26,7 @@ from collections import deque
 
 
 LOG_DIR = 'log/random_log/test'
-LOAD_PATH = 'log/saved_random.tar'
+LOAD_PATH = 'log/sanity_random.tar'
 def main():
     num_envs = 64
     learning_rate = 5e-4
