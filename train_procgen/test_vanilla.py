@@ -50,7 +50,7 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=100) 
-    parser.add_argument('--run_id', type=int, default=0)
+    parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--nrollouts', '-nroll', type=int, default=0)
 
     args = parser.parse_args()

@@ -14,6 +14,7 @@ NOTE:
 """
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.distributions import make_pdtype
 from baselines.common.input import observation_input
@@ -22,7 +23,7 @@ from baselines.common.input import observation_input
 DROPOUT = 0.0
 ARCHITECTURE =  'impala'
 USE_COLOR_TRANSFORM = 0
-USE_BATCH_NORM = 0
+USE_BATCH_NORM = 1
 ##################
 def impala_cnn(images, depths=[16, 32, 32]):
     """
@@ -265,7 +266,7 @@ def random_impala_cnn(images, depths=[16, 32, 32]):
 
         if use_batch_norm:
             out = tf.contrib.layers.batch_norm(out, center=True, scale=True, is_training=True)
-
+        
         return out
 
     def residual_block(inputs):
@@ -276,6 +277,7 @@ def random_impala_cnn(images, depths=[16, 32, 32]):
         out = conv_layer(out, depth)
         out = tf.nn.relu(out)
         out = conv_layer(out, depth)
+        
         return out + inputs
 
     def conv_sequence(inputs, depth):
@@ -302,7 +304,18 @@ def random_impala_cnn(images, depths=[16, 32, 32]):
     mask_vbox = mask_vbox[:,:mh,:mw].assign(tf.ones([mask_shape[0], mh, mw, mask_shape[3]], dtype=bool))
 
     img  = tf.where(mask_vbox, x=tf.zeros_like(images), y=images)
-    rand_img = tf.layers.conv2d(img, randcnn_depth, 3, padding='same', kernel_initializer=tf.initializers.glorot_normal(), trainable=False, name='randcnn')
+    rand_img = tf.layers.conv2d(img, randcnn_depth, 3, padding='same', \
+        kernel_initializer=tf.initializers.glorot_normal(), trainable=False, name='randcnn')
+    # print("\n image perturbed: ", rand_img)
+    # print("\n", rand_img.shape)
+    # sess = tf.Session()
+    # with sess.as_default():
+    #     img = img.eval()
+    #     arr = sess.run(rand_img, {img})
+    # plt.imsave("rand0.jpg", arr[0])
+    # plt.imsave("rand10.jpg", arr[10])
+    # plt.imsave("rand100.jpg", arr[100])
+    # print("\n", arr)
     out = tf.where(mask_vbox, x=images, y=rand_img, name='randout')
 
     for depth in depths:
@@ -323,7 +336,7 @@ class RandomCnnPolicy(object):
         mc_index = tf.placeholder(tf.int64, shape=[1], name='mc_index')
         
         with tf.variable_scope("model", reuse=tf.AUTO_REUSE):    
-            h, self.dropout_assign_ops = random_impala_cnn(scaled_images)    
+            h, self.dropout_assign_ops = random_impala_cnn(scaled_images)   
             vf = fc(h, 'v', 1)[:,0]
             self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
             

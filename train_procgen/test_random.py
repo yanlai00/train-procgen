@@ -1,3 +1,6 @@
+"""
+$ python train_procgen/test_random.py -nroll 20 -id 0
+"""
 import os
 from os.path import join
 import json
@@ -25,8 +28,8 @@ from train_procgen.random_ppo import Model, Runner, safemean
 from collections import deque
 
 
-LOG_DIR = 'log/random_log/test'
-LOAD_PATH = 'log/sanity_random.tar'
+LOG_DIR = 'log/debug'
+LOAD_PATH = 'log/debug_random.tar'
 def main():
     num_envs = 64
     learning_rate = 5e-4
@@ -53,7 +56,7 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=50) 
-    parser.add_argument('--run_id', type=int, default=0)
+    parser.add_argument('--run_id', '-id',type=int, default=0)
     parser.add_argument('--nrollouts', '-nroll', type=int, default=0)
 
     args = parser.parse_args()
@@ -127,7 +130,7 @@ def main():
     datapoints = []
     for rollout in range(1, nrollouts+1):
         logger.info('collecting rollouts {}...'.format(rollout))
-        clean_flag = 1 ## since we are testiing, disable randomization
+        clean_flag = 0 ## since we are testiing, ENABLE randomization
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)

@@ -1,6 +1,6 @@
 """
-To run test: (default we do 20 batch rollouts)
-$ python train_procgen/test_recenter.py --start_level 50 
+To run test: (default we do 50 batch rollouts)
+$ python train_procgen/test_recenter.py --start_level 50 -id 0 --load_id 0 
 """
 import os
 from os.path import join
@@ -28,7 +28,7 @@ from collections import deque
 
 
 LOG_DIR = 'log/recenter/test'
-LOAD_PATH = 'log/saved_recenter.tar'
+LOAD_PATH = "log/recenter"
 def main():
     num_envs = 64
     learning_rate = 5e-4
@@ -55,8 +55,9 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=50) 
-    parser.add_argument('--run_id', type=int, default=0)
-    parser.add_argument('--nrollouts', '-nroll', type=int, default=20)
+    parser.add_argument('--run_id', '-id', type=int, default=0)
+    parser.add_argument('--load_id', type=int, default=0)
+    parser.add_argument('--nrollouts', '-nroll', type=int, default=50)
 
     args = parser.parse_args()
     args.total_timesteps = total_timesteps
@@ -116,8 +117,9 @@ def main():
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
         max_grad_norm=max_grad_norm)
 
-    model.load(LOAD_PATH)
-    logger.info("Model pramas loaded from save")
+    load_model = join( LOAD_PATH, "saved_recenter_v{}.tar".format(args.load_id) )
+    model.load(load_model)
+    logger.info("Model pramas loaded from saved model: ", load_model)
     runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
 
     epinfobuf10 = deque(maxlen=10)
@@ -129,7 +131,7 @@ def main():
     datapoints = []
     for rollout in range(1, nrollouts+1):
         logger.info('collecting rollouts {}...'.format(rollout))
-        clean_flag = 1 ## since we are testiing, disable randomization
+        clean_flag = 1 ## disable randomization bc agent was clean-trained originally
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)

@@ -1,6 +1,48 @@
+## Setup 
+Need to export variables:
+first confirm `/usr/local/cuda-10.0/lib64` exists (or other versions of cuda, e.g. cuda-5.0), then
+```
+export LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:/usr/local/cuda-10.0/lib
+```
+if the desired GPU has index 0, do: 
+```
+export CUDA_VISIBLE_DEVICES=0
+```
+
+As a reference, output from current conda env that uses GPU:
+```
+(train-procgen)$ echo $LD_LIBRARY_PATH
+/home/mandi/.local/bin:/home/mandi/bin:/home/mandi/miniconda3/envs/train-procgen/bin:/home/mandi/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/ussr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/mandi/bin:/home/mandi/bin:/home/mandi/lib:/usr/local/cuda-10.0/lib64:/usr/local/cuda-10.0/lib
+(train-procgen) $ echo $CUDA_VISIBLE_DEVICES 
+0
+```
+
+## experiments to run
+1. train (and save) an agent on recentered frame inputs for 500k, num_levels==50: 
+(it's gonna be slow since the recenter process isn't very optimized for now: TODO!)
+```
+conda activate train-procgen
+mkdir log
+python train_procgen/train_recenter.py --nupdates 0 -id 0
+## If you want to use taskset to limit CPU usage, say only use CPU index 0-5, do
+## taskset -c 0-5 python train_procgen/train_recenter.py --nupdates 0 -id 0
+## same for commands below
+```
+
+2. train (and save) a second agent on recentered frame inputs for 500k, num_levels==100: 
+```
+python train_procgen/train_recenter.py --nupdates 0 -id 1 --num_levels 100
+```
+
+3. Now hopefully you'll have two agents with models saved as .tar file, run below to test their performance on unseen levels
+```
+bash test_recenter.sh
+```
+
+
 **Status:** Archive (code is provided as-is, no updates expected)
 
-# Leveraging Procedural Generation to Benchmark Reinforcement Learning
+## Leveraging Procedural Generation to Benchmark Reinforcement Learning
 
 #### [[Blog Post]](https://openai.com/blog/procgen-benchmark/) [[Paper]](https://arxiv.org/abs/1912.01588)
 
@@ -25,68 +67,6 @@ conda env update --name train-procgen --file train-procgen/environment.yml
 conda activate train-procgen
 pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip
 pip install -e train-procgen
-```
-
-## Try it out
-
-Train an agent using PPO on the environment StarPilot:
-
-```
-python -m train_procgen.train --env_name starpilot
-```
-
-Train an agent using PPO on the environment StarPilot using the easy difficulty:
-
-```
-python -m train_procgen.train --env_name starpilot --distribution_mode easy
-```
-
-Run parallel training using MPI:
-
-```
-mpiexec -np 8 python -m train_procgen.train --env_name starpilot
-```
-
-Train an agent on a fixed set of N levels:
-
-```
-python -m train_procgen.train --env_name starpilot --num_levels N
-```
-
-Train an agent on the same 500 levels used in the paper:
-
-```
-python -m train_procgen.train --env_name starpilot --num_levels 500
-```
-
-Train an agent on a different set of 500 levels:
-
-```
-python -m train_procgen.train --env_name starpilot --num_levels 500 --start_level 1000
-```
-
-Run simultaneous training and testing using MPI. 1 in every 4 workers will be test workers, and the rest will be training workers.
-
-```
-mpiexec -np 8 python -m train_procgen.train --env_name starpilot --num_levels 500 --test_worker_interval 4
-```
-
-Train an agent using PPO on a level in Jumper that requires hard exploration
-
-```
-python -m train_procgen.train --env_name jumper --distribution_mode exploration
-```
-
-Train an agent using PPO on a variant of CaveFlyer that requires memory
-
-```
-python -m train_procgen.train --env_name caveflyer --distribution_mode memory
-```
-
-View training options:
-
-```
-python -m train_procgen.train --help
 ```
 
 # Citation

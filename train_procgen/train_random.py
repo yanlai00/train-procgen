@@ -2,6 +2,8 @@
 Procgen training script, baselines style
 Mimicing OpenAI train-procgen repo, see https://github.com/openai/train-procgen/blob/master/train_procgen/train.py
 I used the above code to train the vanilla ppo agent
+
+$ python train_procgen/train_random.py --nupdates 1 --run_id 99
 """
 import os
 from os.path import join
@@ -22,9 +24,9 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-LOG_DIR = 'log/random_log/train'
+LOG_DIR = 'log/random_log/debug'
 #SAVE_PATH = 'log/saved_random.tar'
-SAVE_PATH = 'log/sanity_random.tar'
+SAVE_PATH = 'log/debug_random.tar'
 
 def main():
     num_envs = 64
@@ -104,7 +106,7 @@ def main():
         env=venv,
         network=None,
         total_timesteps=timesteps_per_proc,
-        save_interval=2,
+        save_interval=2, ## doesn't matter, only saving at the end
         nsteps=nsteps,
         nminibatches=nminibatches,
         lam=lam,

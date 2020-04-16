@@ -30,7 +30,9 @@ from baselines.common.mpi_util import sync_from_root
 ## mentioned in paper imported from Config
 L2_WEIGHT = 10e-4
 FM_COEFF = 0.002
-REAL_THRES = 0.1 # clean inputs are used with this probability α  
+# FM_COEFF = 0.01 random trying 
+#REAL_THRES = 0.1 # clean inputs are used with this probability α  
+REAL_THRES = 0.9
 ## Deleted MPIAdamoptimizer, needed when comm.Get_size() > 1 (rn ==1)
 
 class Model(object):
@@ -341,10 +343,10 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
         run_tstart = time.time()
         sess.run(init_rand) # re-initialize the parameters of random networks
         clean_flag = np.random.rand(1)[0] > REAL_THRES ##
-        ## NOTE: for sanity check (aka always run clean), do 
-        clean_flag = 1
-        if update == 1:
-            logger.info("clean_flag set to 1 for sanity check")
+        ## NOTE: for sanity check (aka always run clean), do clean_flag = 1
+        ## for debugged (aka always run perturbed), do 
+        #clean_flag = 0
+        logger.info("\n clean_flag set to "+str(clean_flag))
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)

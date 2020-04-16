@@ -1,10 +1,14 @@
+"""
+Train an observation-recentered agent
+$ taskset -c 0-7 python train_procgen/train_recenter.py --nupdates 0 -id 0
+"""
 import os
 from os.path import join
 import json
 import tensorflow as tf
 # from baselines.ppo2 import ppo2
 import recenter_ppo
-from baselines.common.models import build_impala_cnn
+
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
 from baselines.common.vec_env import (
@@ -18,10 +22,11 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/recenter/train'
-SAVE_PATH = "log/saved_recenter.tar"
+SAVE_PATH = "log/recenter"
+## Apri.16: v0: delete everything and retrain! always use clean train
 
 def main():
-    num_envs = 64 ## Testing
+    num_envs = 64 
     learning_rate = 5e-4
     ent_coef = .01
     gamma = .999
@@ -39,7 +44,7 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
-    parser.add_argument('--run_id', type=int, default=0)
+    parser.add_argument('--run_id', '-id', type=int, default=99)
     parser.add_argument('--nupdates', type=int, default=0)
 
     args = parser.parse_args()
@@ -48,7 +53,7 @@ def main():
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
     
-
+    save_model = join( SAVE_PATH, "saved_recenter_v{}.tar".format(args.run_id) )
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -75,6 +80,8 @@ def main():
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     print("\nSaved args at:\n\t{}\n".format(fpath))
 
+    logger.info("\n Saving model to file {}".format(save_model))
+    
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
         num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
@@ -93,7 +100,6 @@ def main():
     sess.__enter__()
 
     logger.info(venv.observation_space)
-
     logger.info("training")
     recenter_ppo.learn(
         env=venv,
@@ -113,7 +119,7 @@ def main():
         cliprange=lambda f : f * 0.2,
         # update_fn=None,
         # init_fn=None,
-	    save_path=SAVE_PATH,
+	    save_path=save_model,
         load_path=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
