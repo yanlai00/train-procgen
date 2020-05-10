@@ -105,29 +105,30 @@ def main():
     logger.info(venv.observation_space)
     logger.info("training")
     with sess.as_default():
-        ppo_func.learn(
-            sess=sess,
-            env=venv,
-            network=None,
-            total_timesteps=timesteps_per_proc,
-            save_interval=2,
-            nsteps=nsteps,
-            nminibatches=nminibatches,
-            lam=lam,
-            gamma=gamma,
-            noptepochs=ppo_epochs,
-            log_interval=args.log_interval,
-            ent_coef=ent_coef,
-            # clip_vf=use_vf_clipping,
-            lr=learning_rate,
-            cliprange=clip_range,
-            # update_fn=None,
-            # init_fn=None,
-	        save_path=save_model,
-            load_path=None,
-            vf_coef=0.5,
-            max_grad_norm=0.5,
-        )
+        model = ppo_func.learn(
+                sess=sess,
+                env=venv,
+                network=None,
+                total_timesteps=timesteps_per_proc,
+                save_interval=2,
+                nsteps=nsteps,
+                nminibatches=nminibatches,
+                lam=lam,
+                gamma=gamma,
+                noptepochs=ppo_epochs,
+                log_interval=args.log_interval,
+                ent_coef=ent_coef,
+                # clip_vf=use_vf_clipping,
+                lr=learning_rate,
+                cliprange=clip_range,
+                # update_fn=None,
+                # init_fn=None,
+                save_path=save_model,
+                load_path=None,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+            )
+        model.save(save_model)
 
 if __name__ == '__main__':
     main()

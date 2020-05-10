@@ -446,7 +446,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         train_elapsed = time.time() - train_tstart
         train_t_total += train_elapsed
-        logger.info('update complete')
+        #ogger.info('update complete')
 
         lossvals = np.mean(mblossvals, axis=0)
         tnow = time.time()
@@ -509,7 +509,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
         model.save(save_path)
 
     env.close()
-    return mean_rewards
+    return model
 
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
