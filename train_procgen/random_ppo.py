@@ -1,4 +1,6 @@
 """
+NOTE: for debug purposes, need to reset clean_loss to match baseline.ppo2! 
+    aka get rid of l2_loss and fm_losss
 Taking Kimin's netrand code https://github.com/pokaxpoka/netrand/blob/master/sources/random_ppo2.py
 and replacing openai/coinrun Configs with hard-coded params to fit openai/procgen env
 
@@ -28,8 +30,8 @@ from baselines.common.tf_util import initialize
 from baselines.common.mpi_util import sync_from_root
 
 ## mentioned in paper imported from Config
-L2_WEIGHT = 10e-4
-FM_COEFF = 0.002
+L2_WEIGHT = 1e-5
+FM_COEFF = 1e-3
 # FM_COEFF = 0.01 random trying 
 #REAL_THRES = 0.1 # clean inputs are used with this probability α  
 REAL_THRES = 0.9
@@ -104,9 +106,11 @@ class Model(object):
 
         l2_loss = tf.reduce_sum([tf.nn.l2_loss(v) for v in weight_params])
 
-        loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
-        clean_loss = clean_pg_loss - clean_entropy * ent_coef + clean_vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
-
+        #loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
+        loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef + l2_loss * L2_WEIGHT  + fm_loss * FM_COEFF
+        #clean_loss = clean_pg_loss - clean_entropy * ent_coef + clean_vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
+        clean_loss = clean_pg_loss - clean_entropy * ent_coef + clean_vf_loss * vf_coef + fm_loss * FM_COEFF + l2_loss * L2_WEIGHT
+        
         #if Config.SYNC_FROM_ROOT:
         if 0:
             trainer = MpiAdamOptimizer(MPI.COMM_WORLD, learning_rate=LR, epsilon=1e-5)
@@ -142,7 +146,7 @@ class Model(object):
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
             return sess.run(
-                [pg_loss, vf_loss, entropy, approxkl, clipfrac, l2_loss, _train],
+                [pg_loss, vf_loss, entropy, approxkl, clipfrac, l2_loss, fm_loss, _train],
                 td_map
             )[:-1]
         
@@ -158,11 +162,11 @@ class Model(object):
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
             return sess.run(
-                [clean_pg_loss, clean_vf_loss, clean_entropy, clean_approxkl, clean_clipfrac, l2_loss, _clean_train],
+                [clean_pg_loss, clean_vf_loss, clean_entropy, clean_approxkl, clean_clipfrac, l2_loss, fm_loss, _clean_train],
                 td_map
             )[:-1]
         
-        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'l2_loss']
+        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac', 'l2_loss', 'fm_loss']
 
         def save(save_path):
             ps = sess.run(params)
@@ -345,7 +349,7 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
         clean_flag = np.random.rand(1)[0] > REAL_THRES ##
         ## NOTE: for sanity check (aka always run clean), do clean_flag = 1
         ## for debugged (aka always run perturbed), do 
-        #clean_flag = 0
+        # clean_flag = 1
         logger.info("\n clean_flag set to "+str(clean_flag))
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)

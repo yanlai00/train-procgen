@@ -1,13 +1,15 @@
+"""
+To run test: (default we do 50 batch rollouts)
+$ python train_procgen/test_select.py --start_level 50 -id 0 --load_id 0 --use "randcrop"
+$ python train_procgen/test_select.py --start_level 50 -id 0 --load_id 0 --use "cutout"
+$ 
+"""
 import os
 from os.path import join
 import json
+import numpy as np 
 import tensorflow as tf
-from collections import deque
-from baselines.ppo2 import ppo2
-from baselines.ppo2.model import Model
-from baselines.ppo2.runner import Runner
-from baselines.common.models import build_impala_cnn
-from baselines.common.policies import build_policy
+
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
 from baselines.common.vec_env import (
@@ -19,10 +21,72 @@ from baselines.common.vec_env import (
 from baselines import logger
 from mpi4py import MPI
 import argparse
-import numpy as np 
-from train_procgen.random_ppo import safemean
 
-LOG_DIR = 'log/vanilla/test'
+## random_ppo imports
+import train_procgen
+from train_procgen.random_ppo import safemean
+from train_procgen.crop_ppo import RandCropCnnPolicy, sf01, constfn
+from train_procgen.cutout_ppo import CutoutCnnPolicy
+from baselines.common.runners import AbstractEnvRunner
+from collections import deque
+
+class TestRunner(AbstractEnvRunner):
+    def __init__(self, *, env, model, nsteps, gamma, lam):
+        super().__init__(env=env, model=model, nsteps=nsteps)
+        self.lam = lam
+        self.gamma = gamma
+        ##self.obs = rand_crop(self.obs) NO CROPPING OR CUTOUT AT TEST TIME
+
+    def run(self):
+        # Here, we init the lists that will contain the mb of experiences
+        mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
+        mb_states = self.states
+        epinfos = []
+        # For n in range number of steps
+        for _ in range(self.nsteps):
+            # Given observations, get action value and neglopacs
+            # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
+            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones)
+            mb_obs.append(self.obs.copy())
+            mb_actions.append(actions)
+            mb_values.append(values)
+            mb_neglogpacs.append(neglogpacs)
+            mb_dones.append(self.dones)
+
+            # Take actions in env and look the results
+            # Infos contains a ton of useful informations
+            self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            for info in infos:
+                maybeepinfo = info.get('episode')
+                if maybeepinfo: epinfos.append(maybeepinfo)
+            mb_rewards.append(rewards)
+        #batch of steps to batch of rollouts
+        mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
+        mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
+        mb_actions = np.asarray(mb_actions)
+        mb_values = np.asarray(mb_values, dtype=np.float32)
+        mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
+        mb_dones = np.asarray(mb_dones, dtype=np.bool)
+        last_values = self.model.value(self.obs, self.states, self.dones)
+
+        # discount/bootstrap off value fn
+        mb_returns = np.zeros_like(mb_rewards)
+        mb_advs = np.zeros_like(mb_rewards)
+        lastgaelam = 0
+        for t in reversed(range(self.nsteps)):
+            if t == self.nsteps - 1:
+                nextnonterminal = 1.0 - self.dones
+                nextvalues = last_values
+            else:
+                nextnonterminal = 1.0 - mb_dones[t+1]
+                nextvalues = mb_values[t+1]
+            delta = mb_rewards[t] + self.gamma * nextvalues * nextnonterminal - mb_values[t]
+            mb_advs[t] = lastgaelam = delta + self.gamma * self.lam * nextnonterminal * lastgaelam
+        mb_returns = mb_advs + mb_values
+
+        return (*map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs)),
+            mb_states, epinfos)
+
 
 def main():
     num_envs = 64
@@ -49,10 +113,12 @@ def main():
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=1000)
     ## default starting_level set to 50 to test on unseen levels!
-    parser.add_argument('--start_level', type=int, default=1000) 
+    parser.add_argument('--start_level', type=int, default=50) 
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=0)
-    parser.add_argument('--nrollouts', '-nroll', type=int, default=0)
+    parser.add_argument('--nrollouts', '-nroll', type=int, default=50)
+    parser.add_argument('--use', type=str, default="randcrop")
+
 
     args = parser.parse_args()
     args.total_timesteps = total_timesteps
@@ -60,6 +126,17 @@ def main():
         total_timesteps = int(args.nrollouts * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
     run_ID += '_load{}'.format(args.load_id)
+    print(args.use)
+    if args.use == "randcrop":
+        LOG_DIR = 'log/randcrop/test'
+        load_model = "log/randcrop/saved_randcrop_v{}.tar".format(args.load_id) 
+        from train_procgen.crop_ppo import Model, Runner
+        policy = RandCropCnnPolicy
+    if args.use == "cutout":
+        LOG_DIR = 'log/cutout/test'
+        load_model = "log/cutout/saved_cutout_v{}.tar".format(args.load_id)
+        from train_procgen.cutout_ppo import Model, Runner
+        policy = CutoutCnnPolicy
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -107,17 +184,14 @@ def main():
     nbatch_train = nbatch // nminibatches
     nrollouts = total_timesteps // nbatch
 
-    network = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    policy = build_policy(env, network)
-    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, 
+    model = Model(sess=sess, policy=policy, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
         max_grad_norm=max_grad_norm)
 
-    LOAD_PATH = "log/vanilla/saved_vanilla_v{}.tar".format(args.load_id)
-    model.load(LOAD_PATH)
-    logger.info("Model pramas loaded from save")
-    runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
+    model.load(load_model)
+    logger.info("Model pramas loaded from saved model: ", load_model)
+    runner = TestRunner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
 
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)
@@ -128,7 +202,7 @@ def main():
     datapoints = []
     for rollout in range(1, nrollouts+1):
         logger.info('collecting rollouts {}...'.format(rollout))
-        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() ## differnent from random_ppo!
+        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run()
         epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)
 

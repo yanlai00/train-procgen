@@ -1,3 +1,6 @@
+"""
+python train_procgen/train.py -id 3 --num_levels 50
+"""
 import os
 from os.path import join
 import json
@@ -17,7 +20,6 @@ from mpi4py import MPI
 import argparse
 
 LOG_DIR = 'log/vanilla/train'
-SAVE_PATH = "log/saved_vanilla.tar"
 
 def main():
     num_envs = 64
@@ -29,7 +31,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 500_000
+    timesteps_per_proc = 20_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -38,7 +40,7 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
-    parser.add_argument('--run_id', type=int, default=0)
+    parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
 
     args = parser.parse_args()
@@ -46,7 +48,8 @@ def main():
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    
+    SAVE_PATH = "log/vanilla/saved_vanilla_v{}.tar".format(args.run_id)
+
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -62,18 +65,18 @@ def main():
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
-    logger.configure(dir=LOG_DIR, format_strs=format_strs)
 
     logpath = join(LOG_DIR, run_ID)
     if not os.path.exists(logpath):
         os.system("mkdir -p %s" % logpath)
-        
+    logger.configure(dir=logpath, format_strs=format_strs)   
+
     fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     print("\nSaved args at:\n\t{}\n".format(fpath))
 
-    logger.info("saving to filename ",SAVE_PATH)
+    logger.info("saving to filename ", SAVE_PATH)
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
@@ -86,7 +89,7 @@ def main():
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.ConfigProto(device_count={'GPU':0})
+    config = tf.ConfigProto(log_device_placement=True)#device_count={'GPU':0})
     config.gpu_options.allow_growth = True #pylint: disable=E1101
     sess = tf.Session(config=config)
     sess.__enter__()
@@ -98,7 +101,6 @@ def main():
         env=venv,
         network=conv_fn,
         total_timesteps=timesteps_per_proc,
-        save_interval=0,
         nsteps=nsteps,
         nminibatches=nminibatches,
         lam=lam,
@@ -116,6 +118,7 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
+        save_interval=30
     )
     model.save(SAVE_PATH)
 

@@ -1,6 +1,6 @@
 """
 Train an observation-recentered agent
-$ taskset -c 0-7 python train_procgen/train_recenter.py -id 5
+$ taskset -c 0-7 python train_procgen/train_crop.py -id 2 --num_levels 100; bash test_crop.sh
 """
 import os
 from os.path import join
@@ -8,7 +8,8 @@ import json
 import tensorflow as tf
 
 # from baselines.ppo2 import ppo2
-import recenter_ppo
+import cutout_ppo
+import crop_ppo
 
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -22,9 +23,6 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-LOG_DIR = 'log/recenter/train'
-SAVE_PATH = "log/recenter"
-## Apri.16: v0: delete everything and retrain! always use clean train
 
 def main():
     num_envs = 64 
@@ -36,7 +34,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 1_000_000
+    timesteps_per_proc = 8_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -45,26 +43,29 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
-    parser.add_argument('--run_id', '-id', type=int, default=99)
+    parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--use', type=str, default="randcrop")
 
     args = parser.parse_args()
     args.total_tsteps = timesteps_per_proc
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    
-    save_model = join( SAVE_PATH, "saved_recenter_v{}.tar".format(args.run_id) )
+    if args.use == "randcrop":
+        LOG_DIR = 'log/randcrop/train'
+        save_model = join("log/randcrop/" "saved_randcrop_v{}.tar".format(args.run_id) )
+        ppo_func = crop_ppo
+    if args.use == "cutout":
+        LOG_DIR = 'log/cutout/train'
+        save_model = join("log/cutout/" "saved_cutout_v{}.tar".format(args.run_id) )
+        ppo_func = cutout_ppo
     test_worker_interval = args.test_worker_interval
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-
     is_test_worker = False
-
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
-
     mpi_rank_weight = 0 if is_test_worker else 1
     num_levels = 0 if is_test_worker else args.num_levels
 
@@ -95,15 +96,15 @@ def main():
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.compat.v1.ConfigProto(log_device_placement=True)#device_count={'GPU':0})
+    config = tf.compat.v1.ConfigProto(log_device_placement=True)#device_count={'GPU':0, 'XLA_GPU':0})
     config.gpu_options.allow_growth = True #pylint: disable=E1101
     sess = tf.compat.v1.Session(config=config)
-    # sess.__enter__()
+    #sess.__enter__()
 
     logger.info(venv.observation_space)
     logger.info("training")
     with sess.as_default():
-        recenter_ppo.learn(
+        ppo_func.learn(
             sess=sess,
             env=venv,
             network=None,

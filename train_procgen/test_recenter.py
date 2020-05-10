@@ -39,7 +39,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    total_timesteps = 100_000 ## now this counts steps in testing runs
+    total_timesteps = 50_000 ## now this counts steps in testing runs
     use_vf_clipping = True
 
     ## From random_ppo.py
@@ -52,18 +52,19 @@ def main():
     parser = argparse.ArgumentParser(description='Process procgen testing arguments.')
     parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--num_levels', type=int, default=50)
+    parser.add_argument('--num_levels', type=int, default=1000)
     ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=50) 
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=0)
-    parser.add_argument('--nrollouts', '-nroll', type=int, default=50)
+    parser.add_argument('--nrollouts', '-nroll', type=int, default=8)
 
     args = parser.parse_args()
     args.total_timesteps = total_timesteps
     if args.nrollouts:
         total_timesteps = int(args.nrollouts * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
+    run_ID += '_load{}'.format(args.load_id)
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -77,7 +78,7 @@ def main():
     if not os.path.exists(logpath):
         os.system("mkdir -p %s" % logpath)
 
-    fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
+    fpath = join(logpath, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     print("\nSaved args at:\n\t{}\n".format(fpath))
@@ -112,7 +113,7 @@ def main():
     nrollouts = total_timesteps // nbatch
 
     policy = RecenterCnnPolicy
-    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, 
+    model = Model(sess=sess, policy=policy, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
         max_grad_norm=max_grad_norm)

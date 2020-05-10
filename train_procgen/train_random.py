@@ -24,9 +24,8 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-LOG_DIR = 'log/random_log/debug'
-#SAVE_PATH = 'log/saved_random.tar'
-SAVE_PATH = 'log/debug_random.tar'
+LOG_DIR = 'log/random/train'
+SAVE_PATH = 'log/random/saved_random.tar'
 
 def main():
     num_envs = 64
@@ -38,7 +37,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 500_000
+    timesteps_per_proc = 5_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -49,19 +48,22 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--debug', default=False, action="store_true")
 
     args = parser.parse_args()
     args.total_tsteps = timesteps_per_proc
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    
-
+    if args.debug:
+        LOG_DIR = 'log/random/debug'
+        SAVE_PATH = 'log/random/debug_random_v{}.tar'.format(args.run_id)
+    else:
+        LOG_DIR = 'log/random/train'
+        SAVE_PATH = 'log/random/random_v{}.tar'.format(args.run_id)
     test_worker_interval = args.test_worker_interval
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-
     is_test_worker = False
 
     if test_worker_interval > 0:
@@ -77,7 +79,7 @@ def main():
         os.system("mkdir -p %s" % logpath)
     logger.configure(dir=logpath, format_strs=format_strs)
 
-    fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
+    fpath = join(logpath, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     logger.info("\n Saving to file {}".format(SAVE_PATH))
@@ -116,8 +118,8 @@ def main():
         ent_coef=ent_coef,
         # clip_vf=use_vf_clipping,
         lr=learning_rate,
-        # cliprange=clip_range,
-        cliprange=lambda f : f * 0.2,
+        cliprange=clip_range,
+        #cliprange=lambda f : f * 0.2,
         # update_fn=None,
         # init_fn=None,
 	    save_path=SAVE_PATH,
