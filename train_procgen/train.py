@@ -42,11 +42,16 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--log_interval', type=int, default=1)
+    parser.add_argument('--total_tsteps', type=int, default=0)
 
     args = parser.parse_args()
-    args.total_tsteps = timesteps_per_proc
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
+    if not args.total_tsteps:
+        args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
+
+
     run_ID = 'run_'+str(args.run_id).zfill(2)
     SAVE_PATH = "log/vanilla/saved_vanilla_v{}.tar".format(args.run_id)
 
@@ -106,7 +111,7 @@ def main():
         lam=lam,
         gamma=gamma,
         noptepochs=ppo_epochs,
-        log_interval=1,
+        log_interval=args.log_interval,
         ent_coef=ent_coef,
         mpi_rank_weight=mpi_rank_weight,
         clip_vf=use_vf_clipping,
@@ -118,7 +123,7 @@ def main():
         init_fn=None,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        save_interval=30
+        save_interval=300
     )
     model.save(SAVE_PATH)
 

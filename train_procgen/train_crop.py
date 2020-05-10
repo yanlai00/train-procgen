@@ -44,14 +44,18 @@ def main():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
-    parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
     parser.add_argument('--log_interval', type=int, default=1)
+    parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--total_tsteps', type=int, default=0)
 
     args = parser.parse_args()
-    args.total_tsteps = timesteps_per_proc
+    
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
+    if not args.total_tsteps:
+        args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
+
     run_ID = 'run_'+str(args.run_id).zfill(2)
     if args.use == "randcrop":
         LOG_DIR = 'log/randcrop/train'
