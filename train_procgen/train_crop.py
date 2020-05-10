@@ -34,7 +34,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 8_000_000
+    timesteps_per_proc = 20_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
+    parser.add_argument('--log_interval', type=int, default=1)
 
     args = parser.parse_args()
     args.total_tsteps = timesteps_per_proc
@@ -115,7 +116,7 @@ def main():
             lam=lam,
             gamma=gamma,
             noptepochs=ppo_epochs,
-            log_interval=1,
+            log_interval=args.log_interval,
             ent_coef=ent_coef,
             # clip_vf=use_vf_clipping,
             lr=learning_rate,

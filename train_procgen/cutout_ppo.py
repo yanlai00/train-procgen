@@ -400,7 +400,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
         lrnow = lr(frac)
         cliprangenow = cliprange(frac)
 
-        logger.info('collecting rollouts...')
+        #logger.info('collecting rollouts...')
         run_tstart = time.time()
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run()
@@ -409,11 +409,11 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         run_elapsed = time.time() - run_tstart
         run_t_total += run_elapsed
-        logger.info('rollouts complete')
+        #logger.info('rollouts complete')
 
         mblossvals = []
 
-        logger.info('updating parameters...')
+        logger.info('update: {} updating parameters...'.format(update))
         train_tstart = time.time()
         
         if states is None: # nonrecurrent version
@@ -470,6 +470,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('eprew100', rew_mean_100)
             logger.logkv('eplenmean10', ep_len_mean_10)
             logger.logkv('eplenmean100', ep_len_mean_100)
+            logger.logkv('nupdate', update)
 
             
             #logger.info('time_elapsed', tnow - tfirststart, run_t_total, train_t_total)

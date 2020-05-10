@@ -480,6 +480,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('misc/total_time_elapsed', tnow - tfirststart)
             logger.logkv('misc/run_t_total', run_t_total)
             logger.logkv('misc/train_t_total', train_t_total)
+            logger.logkv('nupdate', update)
 
             #logger.info('timesteps', update*nsteps, total_timesteps)
             logger.logkv("misc/total_timesteps", update*nbatch)
