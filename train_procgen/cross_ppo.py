@@ -1,5 +1,5 @@
 """
-Change based on random_ppo but with random cropping 
+Change based on cutout with CROSS cut
 """
 
 import time
@@ -35,7 +35,7 @@ L2_WEIGHT = 1e-5
 FM_COEFF = 0.002
 REAL_THRES = 0.1 # clean inputs are used with this probability α  
 ## Deleted MPIAdamoptimizer, needed when comm.Get_size() > 1 (rn ==1)
-def crop_impala_cnn(images, depths=[16, 32, 32]):
+def cut_impala_cnn(images, depths=[16, 32, 32]):
     """
     Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 
     Importance Weighted Actor-Learner Architectures" https://arxiv.org/abs/1802.01561
@@ -95,8 +95,6 @@ def crop_impala_cnn(images, depths=[16, 32, 32]):
 
     out = images
 
-    # out = tf.image.per_image_standardization(out)
-
     for depth in depths:
         out = conv_sequence(out, depth)
 
@@ -122,14 +120,14 @@ def observation_input(ob_space, batch_size=None, name='Ob'):
     placeholder = tf.placeholder(shape=(batch_size,) + shape, dtype=dtype, name=name)
     return placeholder, encode_observation(ob_space, placeholder)
 
-class RandCropCnnPolicy(CnnPolicy): ## Not considering color_transform!
+class CrossCnnPolicy(CnnPolicy): ## Not considering color_transform!
     def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
         self.pdtype = make_pdtype(ac_space)
         X, processed_x = observation_input(ob_space, nbatch)
 
         with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
             processed_x3 = processed_x
-            h, self.dropout_assign_ops = crop_impala_cnn(processed_x3)
+            h, self.dropout_assign_ops = cut_impala_cnn(processed_x3)
             vf = fc(h, 'v', 1)[:,0]
             self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
 
@@ -248,16 +246,15 @@ class Model(object):
 
         initialize()
 
-def rand_crop(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
+def crosscut(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
     """
-    Takes in original obs and randomly crop 
+    Takes in original obs and randomly cutout a strip 
     to a 55x55 
     """
-    x, y = np.random.randint(15,size=(2,))
-    # obs[:, :x, :,:] = 0
-    obs[:, :, :y,:] = 0
-    # obs[:,64-x:, :, :] = 0
-    obs[:, :, 64-y:, :] = 0
+    x = np.random.randint(46)
+    y = np.random.randint(64)
+    obs[:, :, y:y+3,:] = 0
+    obs[:, x:x+4,:,:] = 0
     return obs
 
 class Runner(AbstractEnvRunner):
@@ -265,9 +262,9 @@ class Runner(AbstractEnvRunner):
         super().__init__(env=env, model=model, nsteps=nsteps)
         self.lam = lam
         self.gamma = gamma
-        self.obs = rand_crop(self.obs)
+        self.obs = crosscut(self.obs)
         for i in range(10):
-            plt.imsave("randcrop{}.jpg".format(str(i)), self.obs[i]) #Sanity check!
+            plt.imsave("crosscut{}.jpg".format(str(i)), self.obs[i]) #Sanity check!
 
     def run(self):
         # Here, we init the lists that will contain the mb of experiences
@@ -288,7 +285,7 @@ class Runner(AbstractEnvRunner):
             # Take actions in env and look the results
             # Infos contains a ton of useful informations
             self.obs[:], rewards, self.dones, infos = self.env.step(actions)
-            self.obs[:] = rand_crop(self.obs)
+            self.obs[:] = crosscut(self.obs)
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
@@ -358,7 +355,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     nbatch = nenvs * nsteps
     
     nbatch_train = nbatch // nminibatches
-    policy = RandCropCnnPolicy
+    policy = CrossCnnPolicy
     model = Model(policy=policy, sess=sess, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
@@ -404,7 +401,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
         lrnow = lr(frac)
         cliprangenow = cliprange(frac)
 
-        logger.info('collecting rollouts...')
+        #logger.info('collecting rollouts...')
         run_tstart = time.time()
         
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run()
@@ -413,11 +410,11 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         run_elapsed = time.time() - run_tstart
         run_t_total += run_elapsed
-        logger.info('rollouts complete')
+        #logger.info('rollouts complete')
 
         mblossvals = []
 
-        logger.info('updating parameters...')
+        logger.info('update: {} updating parameters...'.format(update))
         train_tstart = time.time()
         
         if states is None: # nonrecurrent version
@@ -450,7 +447,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         train_elapsed = time.time() - train_tstart
         train_t_total += train_elapsed
-        logger.info('update complete')
+        #ogger.info('update complete')
 
         lossvals = np.mean(mblossvals, axis=0)
         tnow = time.time()
@@ -474,13 +471,13 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('eprew100', rew_mean_100)
             logger.logkv('eplenmean10', ep_len_mean_10)
             logger.logkv('eplenmean100', ep_len_mean_100)
+            logger.logkv('nupdate', update)
 
             
             #logger.info('time_elapsed', tnow - tfirststart, run_t_total, train_t_total)
             logger.logkv('misc/total_time_elapsed', tnow - tfirststart)
             logger.logkv('misc/run_t_total', run_t_total)
             logger.logkv('misc/train_t_total', train_t_total)
-            logger.logkv('nupdate', update)
 
             #logger.info('timesteps', update*nsteps, total_timesteps)
             logger.logkv("misc/total_timesteps", update*nbatch)

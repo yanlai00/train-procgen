@@ -10,6 +10,7 @@ import tensorflow as tf
 # from baselines.ppo2 import ppo2
 import cutout_ppo
 import crop_ppo
+import cross_ppo
 
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -45,7 +46,7 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
-    parser.add_argument('--log_interval', type=int, default=1)
+    parser.add_argument('--log_interval', type=int, default=20)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
 
@@ -65,6 +66,11 @@ def main():
         LOG_DIR = 'log/cutout/train'
         save_model = join("log/cutout/" "saved_cutout_v{}.tar".format(args.run_id) )
         ppo_func = cutout_ppo
+    if args.use == "cross":
+        LOG_DIR = 'log/cross/train'
+        save_model = join("log/cross/" "saved_cross_v{}.tar".format(args.run_id) )
+        ppo_func = cross_ppo
+
     test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()

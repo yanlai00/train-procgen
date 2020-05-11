@@ -1,4 +1,5 @@
 """
+NOTE: run_09 is continuting from run_08!!! 
 python train_procgen/train.py -id 3 --num_levels 50
 """
 import os
@@ -118,7 +119,7 @@ def main():
         comm=comm,
         lr=learning_rate,
         cliprange=clip_range,
-        load_path=None,
+        load_path="log/vanilla/saved_vanilla_v8.tar",
         update_fn=None,
         init_fn=None,
         vf_coef=0.5,
