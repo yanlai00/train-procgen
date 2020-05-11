@@ -11,6 +11,7 @@ import tensorflow as tf
 import cutout_ppo
 import crop_ppo
 import cross_ppo
+import randcuts_ppo
 
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -70,6 +71,11 @@ def main():
         LOG_DIR = 'log/cross/train'
         save_model = join("log/cross/" "saved_cross_v{}.tar".format(args.run_id) )
         ppo_func = cross_ppo
+    if args.use == "all":
+        LOG_DIR = 'log/randcuts/train'
+        save_model = join("log/randcuts/" "saved_randcuts_v{}.tar".format(args.run_id) )
+        ppo_func = randcuts_ppo
+
 
     test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
