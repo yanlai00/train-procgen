@@ -18,25 +18,14 @@ As a reference, output from current conda env that uses GPU:
 ```
 
 ## experiments to run
-1. train (and save) an agent on recentered frame inputs for 500k, num_levels==50: 
-(it's gonna be slow since the recenter process isn't very optimized for now: TODO!)
+1. train (and save) an agent on randomly random cut frames 
 ```
 conda activate train-procgen
 mkdir log
-python train_procgen/train_recenter.py --nupdates 0 -id 0
+python train_procgen/train_crop.py -id 0 --use "all" --num_levels 50
 ## If you want to use taskset to limit CPU usage, say only use CPU index 0-5, do
 ## taskset -c 0-5 python train_procgen/train_recenter.py --nupdates 0 -id 0
 ## same for commands below
-```
-
-2. train (and save) a second agent on recentered frame inputs for 500k, num_levels==100: 
-```
-python train_procgen/train_recenter.py --nupdates 0 -id 1 --num_levels 100
-```
-
-3. Now hopefully you'll have two agents with models saved as .tar file, run below to test their performance on unseen levels
-```
-bash test_recenter.sh
 ```
 
 
