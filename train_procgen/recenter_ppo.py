@@ -555,7 +555,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
         lrnow = lr(frac)
         cliprangenow = cliprange(frac)
 
-        logger.info('collecting rollouts...')
+        #logger.info('collecting rollouts...')
         run_tstart = time.time()
         sess.run(init_rand) # re-initialize the parameters of random networks
         # clean_flag = np.random.rand(1)[0] > REAL_THRES NOTE: always use 1 for now!
@@ -567,11 +567,11 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         run_elapsed = time.time() - run_tstart
         run_t_total += run_elapsed
-        logger.info('rollouts complete')
+        #logger.info('rollouts complete')
 
         mblossvals = []
 
-        logger.info('updating parameters...')
+        #logger.info('updating parameters...')
         train_tstart = time.time()
         
         if states is None: # nonrecurrent version
@@ -608,7 +608,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         train_elapsed = time.time() - train_tstart
         train_t_total += train_elapsed
-        logger.info('update complete')
+        #logger.info('update complete')
 
         lossvals = np.mean(mblossvals, axis=0)
         tnow = time.time()

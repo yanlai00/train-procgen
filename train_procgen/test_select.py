@@ -27,6 +27,7 @@ import train_procgen
 from train_procgen.random_ppo import safemean
 from train_procgen.crop_ppo import RandCropCnnPolicy, sf01, constfn
 from train_procgen.cutout_ppo import CutoutCnnPolicy
+from train_procgen.cross_ppo import CrossCnnPolicy
 from baselines.common.runners import AbstractEnvRunner
 from collections import deque
 
@@ -137,6 +138,11 @@ def main():
         load_model = "log/cutout/saved_cutout_v{}.tar".format(args.load_id)
         from train_procgen.cutout_ppo import Model, Runner
         policy = CutoutCnnPolicy
+    if args.use == "cross":
+        LOG_DIR = 'log/cross/test'
+        load_model = "log/cross/saved_cross_v{}.tar".format(args.load_id)
+        from train_procgen.cross_ppo import Model, Runner
+        policy = CrossCnnPolicy
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()

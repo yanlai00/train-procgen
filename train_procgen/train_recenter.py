@@ -1,6 +1,6 @@
 """
 Train an observation-recentered agent
-$ taskset -c 0-7 python train_procgen/train_recenter.py -id 5
+$ taskset -c 0-7 python train_procgen/train_recenter.py -id 7 --num_levels 25
 """
 import os
 from os.path import join
@@ -36,7 +36,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 1_000_000
+    timesteps_per_proc = 20_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -47,11 +47,16 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=99)
     parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--total_tsteps', type=int, default=0)
+    parser.add_argument('--log_interval', type=int, default=20)
 
     args = parser.parse_args()
     args.total_tsteps = timesteps_per_proc
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
+    if not args.total_tsteps:
+        args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
+
     run_ID = 'run_'+str(args.run_id).zfill(2)
     
     save_model = join( SAVE_PATH, "saved_recenter_v{}.tar".format(args.run_id) )
@@ -114,7 +119,7 @@ def main():
             lam=lam,
             gamma=gamma,
             noptepochs=ppo_epochs,
-            log_interval=1,
+            log_interval=args.log_interval,
             ent_coef=ent_coef,
             # clip_vf=use_vf_clipping,
             lr=learning_rate,

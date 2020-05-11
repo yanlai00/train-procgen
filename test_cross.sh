@@ -1,5 +1,5 @@
-LOAD=5
-USE="randcrop"
+LOAD=0
+USE="cross"
 python train_procgen/test_select.py --start_level 100 -id 0 --load_id ${LOAD} --use ${USE}
 python train_procgen/test_select.py --start_level 1000 -id 1 --load_id ${LOAD} --use ${USE}
 python train_procgen/test_select.py --start_level 5000 -id 2 --load_id ${LOAD} --use ${USE}

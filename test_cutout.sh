@@ -1,4 +1,4 @@
-LOAD=9
+LOAD=10
 USE="cutout"
 python train_procgen/test_select.py --use ${USE} --start_level 100 -id 0 --load_id ${LOAD}
 python train_procgen/test_select.py --use ${USE} --start_level 1000 -id 1 --load_id ${LOAD}

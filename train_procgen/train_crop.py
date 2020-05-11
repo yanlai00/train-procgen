@@ -35,7 +35,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    timesteps_per_proc = 20_000_000
+    timesteps_per_proc = 30_000_000
     use_vf_clipping = True
 
     parser = argparse.ArgumentParser(description='Process procgen training arguments.')
@@ -134,7 +134,7 @@ def main():
                 # update_fn=None,
                 # init_fn=None,
                 save_path=save_model,
-                load_path=None,
+                load_path=None#"log/cross/saved_cross_v0.tar",
                 vf_coef=0.5,
                 max_grad_norm=0.5,
             )
