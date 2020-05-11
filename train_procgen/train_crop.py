@@ -140,7 +140,7 @@ def main():
                 # update_fn=None,
                 # init_fn=None,
                 save_path=save_model,
-                load_path=None#"log/cross/saved_cross_v0.tar",
+                load_path=None,#"log/cross/saved_cross_v0.tar",
                 vf_coef=0.5,
                 max_grad_norm=0.5,
             )
