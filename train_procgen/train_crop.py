@@ -13,6 +13,13 @@ import crop_ppo
 import cross_ppo
 import randcuts_ppo
 
+PPO_FUNCs = {
+    "cutout": cutout_ppo,
+    "randcuts": randcuts_ppo,
+    "cross": cross_ppo,
+    "randcrop": crop_ppo
+    }
+
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
 from baselines.common.vec_env import (
@@ -50,6 +57,7 @@ def main():
     parser.add_argument('--log_interval', type=int, default=20)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
+    parser.add_argument('--load_id', type=int, default=int(-1))
 
     args = parser.parse_args()
     
@@ -59,22 +67,14 @@ def main():
         args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
 
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    if args.use == "randcrop":
-        LOG_DIR = 'log/randcrop/train'
-        save_model = join("log/randcrop/" "saved_randcrop_v{}.tar".format(args.run_id) )
-        ppo_func = crop_ppo
-    if args.use == "cutout":
-        LOG_DIR = 'log/cutout/train'
-        save_model = join("log/cutout/" "saved_cutout_v{}.tar".format(args.run_id) )
-        ppo_func = cutout_ppo
-    if args.use == "cross":
-        LOG_DIR = 'log/cross/train'
-        save_model = join("log/cross/" "saved_cross_v{}.tar".format(args.run_id) )
-        ppo_func = cross_ppo
-    if args.use == "all":
-        LOG_DIR = 'log/randcuts/train'
-        save_model = join("log/randcuts/" "saved_randcuts_v{}.tar".format(args.run_id) )
-        ppo_func = randcuts_ppo
+    ## select which ppo to use:
+    agent_str = args.use
+    LOG_DIR = join("log", agent_str, "train")
+    save_model = join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.run_id) )
+    ppo_func = PPO_FUNCs[agent_str]
+    load_path = None
+    if args.load_id > -1:
+        load_path =  join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.load_id) )
 
 
     test_worker_interval = args.test_worker_interval
@@ -125,8 +125,8 @@ def main():
                 sess=sess,
                 env=venv,
                 network=None,
-                total_timesteps=timesteps_per_proc,
-                save_interval=2,
+                total_timesteps=args.total_tsteps,
+                save_interval=1000,
                 nsteps=nsteps,
                 nminibatches=nminibatches,
                 lam=lam,
@@ -140,7 +140,7 @@ def main():
                 # update_fn=None,
                 # init_fn=None,
                 save_path=save_model,
-                load_path=None#"log/cross/saved_cross_v0.tar",
+                load_path=load_path,
                 vf_coef=0.5,
                 max_grad_norm=0.5,
             )

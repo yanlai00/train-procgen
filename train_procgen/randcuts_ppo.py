@@ -443,7 +443,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         mblossvals = []
 
-        logger.info('update: {} updating parameters...'.format(update))
+        #logger.info('update: {} updating parameters...'.format(update))
         train_tstart = time.time()
         
         if states is None: # nonrecurrent version
@@ -523,7 +523,9 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
             logger.info('----\n')
             logger.dumpkvs()
  
-
+        if save_interval and (update % save_interval == 0):
+            _path = save_path[:-5]+"_"+str(update)+".tar"
+            model.save(_path)
         #if can_save:
         if 0: ## not doing checkpoint saving yet
             if save_interval and (update % save_interval == 0):

@@ -143,6 +143,11 @@ def main():
         load_model = "log/cross/saved_cross_v{}.tar".format(args.load_id)
         from train_procgen.cross_ppo import Model, Runner
         policy = CrossCnnPolicy
+    if args.use == "all":
+        LOG_DIR = 'log/randcuts/test'
+        load_model = "log/randcuts/saved_randcuts_v{}.tar".format(args.load_id)
+        from train_procgen.randcuts_ppo import Model, Runner
+        policy = CrossCnnPolicy
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()

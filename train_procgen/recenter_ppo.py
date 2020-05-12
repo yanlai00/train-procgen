@@ -670,7 +670,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
         model.save(save_path)
 
     env.close()
-    return mean_rewards
+    return model
 
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)

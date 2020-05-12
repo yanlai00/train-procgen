@@ -49,9 +49,13 @@ def main():
     parser.add_argument('--run_id', type=int, default=0)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--debug', default=False, action="store_true")
+    parser.add_argument('--total_tsteps', type=int, default=0)
+    parser.add_argument('--load_id', type=int, default=int(-1))
 
     args = parser.parse_args()
-    args.total_tsteps = timesteps_per_proc
+    if not args.total_tsteps:
+        args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
+
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
@@ -61,6 +65,10 @@ def main():
     else:
         LOG_DIR = 'log/random/train'
         SAVE_PATH = 'log/random/random_v{}.tar'.format(args.run_id)
+    
+    load_path = None
+    if args.load_id > -1:
+        load_path = 'log/random/random_v{}.tar'.format(args.load_id)
     test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -86,7 +94,7 @@ def main():
     logger.info("\nSaved args at:\n\t{}\n".format(fpath))
     
 
-    logger.info("creating environment")
+    #logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
         num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
@@ -103,11 +111,10 @@ def main():
     sess = tf.compat.v1.Session(config=config)
     sess.__enter__()
 
-    logger.info("training")
-    random_ppo.learn(
+    model = random_ppo.learn(
         env=venv,
         network=None,
-        total_timesteps=timesteps_per_proc,
+        total_timesteps=args.total_tsteps,        
         save_interval=2, ## doesn't matter, only saving at the end
         nsteps=nsteps,
         nminibatches=nminibatches,
@@ -123,10 +130,11 @@ def main():
         # update_fn=None,
         # init_fn=None,
 	    save_path=SAVE_PATH,
-        load_path=None,
+        load_path=load_path,
         vf_coef=0.5,
         max_grad_norm=0.5,
     )
+    model.save(SAVE_PATH)
 
 if __name__ == '__main__':
     main()

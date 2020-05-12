@@ -45,6 +45,7 @@ def main():
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--log_interval', type=int, default=1)
     parser.add_argument('--total_tsteps', type=int, default=0)
+    parser.add_argument('--load_id', type=int, default=int(-1))
 
     args = parser.parse_args()
     if args.nupdates:
@@ -55,7 +56,9 @@ def main():
 
     run_ID = 'run_'+str(args.run_id).zfill(2)
     SAVE_PATH = "log/vanilla/saved_vanilla_v{}.tar".format(args.run_id)
-
+    load_path = None
+    if args.load_id > -1:
+        load_path = 'log/vanilla/saved_vanilla_v{}.tar'.format(args.load_id)
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -106,7 +109,7 @@ def main():
     model = ppo2.learn(
         env=venv,
         network=conv_fn,
-        total_timesteps=timesteps_per_proc,
+        total_timesteps=args.total_tsteps,
         nsteps=nsteps,
         nminibatches=nminibatches,
         lam=lam,
@@ -119,7 +122,7 @@ def main():
         comm=comm,
         lr=learning_rate,
         cliprange=clip_range,
-        load_path="log/vanilla/saved_vanilla_v8.tar",
+        load_path=load_path,
         update_fn=None,
         init_fn=None,
         vf_coef=0.5,

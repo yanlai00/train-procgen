@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
     parser.add_argument('--log_interval', type=int, default=20)
+    parser.add_argument('--load_id', type=int, default=int(-1))
 
     args = parser.parse_args()
     args.total_tsteps = timesteps_per_proc
@@ -60,6 +61,9 @@ def main():
     run_ID = 'run_'+str(args.run_id).zfill(2)
     
     save_model = join( SAVE_PATH, "saved_recenter_v{}.tar".format(args.run_id) )
+    load_path = None
+    if args.load_id > -1:
+        load_path = 'log/recenter/recenter_v{}.tar'.format(args.load_id)
     test_worker_interval = args.test_worker_interval
 
     comm = MPI.COMM_WORLD
@@ -108,11 +112,11 @@ def main():
     logger.info(venv.observation_space)
     logger.info("training")
     with sess.as_default():
-        recenter_ppo.learn(
+        model = recenter_ppo.learn(
             sess=sess,
             env=venv,
             network=None,
-            total_timesteps=timesteps_per_proc,
+            total_timesteps=args.total_tsteps,
             save_interval=2,
             nsteps=nsteps,
             nminibatches=nminibatches,
@@ -127,10 +131,11 @@ def main():
             # update_fn=None,
             # init_fn=None,
 	        save_path=save_model,
-            load_path=None,
+            load_path=load_path,
             vf_coef=0.5,
             max_grad_norm=0.5,
         )
+        model.save(save_model)
 
 if __name__ == '__main__':
     main()
