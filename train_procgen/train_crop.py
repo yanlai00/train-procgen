@@ -1,6 +1,5 @@
 """
-Train an observation-recentered agent
-$ taskset -c 0-7 python train_procgen/train_crop.py -id 2 --num_levels 100; bash test_crop.sh
+Train an 
 """
 import os
 from os.path import join
