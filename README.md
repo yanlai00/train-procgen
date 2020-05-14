@@ -1,4 +1,20 @@
-## Setup 
+## Setup on Google Colab Platform
+Open a new kernel, connect to GPU runtime, and run:
+```
+!pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip
+!pip install tensorflow==1.15.0 mpi4py==3.0.3 gym==0.15.4 
+!git clone https://github.com/openai/procgen.git
+!git clone https://github.com/MandiZhao/train-procgen.git
+%cd procgen
+!pip install -e .
+%cd ..
+%cd train-procgen
+!pip install -e .
+```
+Then all scripts can be run from here. 
+
+
+## Setup on GPU-accelerated machines:
 Need to export variables:
 first confirm `/usr/local/cuda-10.0/lib64` exists (or other versions of cuda, e.g. cuda-5.0), then
 ```
@@ -17,23 +33,53 @@ As a reference, output from current conda env that uses GPU:
 0
 ```
 
-## experiments to run
-1. train (and save) an agent on randomly random cut frames 
+## Example command-line usage 
+1. To run a training experiments with 50 avaliable levels for 1M steps and log every 30 steps, use cross-cut method for input processing on top of the baseline PPO algorithm, and saved the model with idx 1:
 ```
-conda activate train-procgen
-mkdir log
-python train_procgen/train_crop.py -id 0 --use "all" --num_levels 50
+$ conda activate train-procgen
+$(train-procgen) python train_procgen/train_crop.py -id 1 --use "cross" --num_levels 50 --total_tsteps 1000000 \
+--log_interval 30
+
 ## If you want to use taskset to limit CPU usage, say only use CPU index 0-5, do
 ## taskset -c 0-5 python train_procgen/train_recenter.py --nupdates 0 -id 0
 ## same for commands below
 ```
+2. To load a partially trained random-crop agent at index 4, continue training it for 2M steps, and save at idx 5:
+```
+$(train-procgen) python train_procgen/train_crop.py -id 5 --load_id 4 --use "randcrop" --num_levels 50 --total_tsteps 2000000 
+```
 
+3. To test a trained random-random-cut agent at index 3 on a set of {100, 1000, 2000, ..., 95000} level intervals:
+(it's easier to put these blocks of commands in a bash .sh file and run from command line)
+
+```
+LOAD=3
+USE="randcuts"
+taskset -c 0-20 python train_procgen/test_select.py --start_level 100 -id 0 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 1000 -id 1 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 5000 -id 2 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 10000 -id 3 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 20000 -id 4 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 30000 -id 5 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 40000 -id 6 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 50000 -id 7 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 60000 -id 8 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 70000 -id 9 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 80000 -id 10 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 90000 -id 11 --load_id ${LOAD} --use ${USE}
+taskset -c 0-20 python train_procgen/test_select.py --start_level 95000 -id 12 --load_id ${LOAD} --use ${USE}
+
+```
+
+
+
+Original train-procgen README:
 
 **Status:** Archive (code is provided as-is, no updates expected)
 
-## Leveraging Procedural Generation to Benchmark Reinforcement Learning
+### Leveraging Procedural Generation to Benchmark Reinforcement Learning
 
-#### [[Blog Post]](https://openai.com/blog/procgen-benchmark/) [[Paper]](https://arxiv.org/abs/1912.01588)
+##### [[Blog Post]](https://openai.com/blog/procgen-benchmark/) [[Paper]](https://arxiv.org/abs/1912.01588)
 
 This is code for training agents for some of the experiments in [Leveraging Procedural Generation to Benchmark Reinforcement Learning](https://cdn.openai.com/procgen.pdf) [(citation)](#citation).  The code for the environments is in the [Procgen Benchmark](https://github.com/openai/procgen) repo.
 
