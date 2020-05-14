@@ -1,3 +1,8 @@
+## CS182 Final Project, Spring 2020 
+# Train a Fruitbot Agent that Learns Fast and Generalizes Well
+![](rendered0.jpg)
+
+
 ## Setup on Google Colab Platform
 Open a new kernel, connect to GPU runtime, and run:
 ```
