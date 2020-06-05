@@ -189,7 +189,7 @@ def main():
     parser.add_argument('--run_id', '-id', type=int, default=99)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
-    parser.add_argument('--log_interval', type=int, default=1)
+    parser.add_argument('--log_interval', type=int, default=5)
     parser.add_argument('--load_id', type=int, default=int(-1))
     parser.add_argument('--nrollouts', '-nroll', type=int, default=0)
     parser.add_argument('--test', default=False, action="store_true")
