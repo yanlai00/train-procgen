@@ -267,7 +267,7 @@ def main():
     
     load_path = None 
     if args.load_id > -1:
-        load_path = join(SAVE_PATH, args.env_name, 'saved_ensemble_v{}.tar'.format(args.load_id))
+        load_path = join(SAVE_PATH, args.env_name, 'saved_ensemble2_v{}.tar'.format(args.load_id))
 
     test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
