@@ -1,5 +1,6 @@
 __pycache__/
 log/*
+log2/*
 *.jpg
 .ipynb_checkpoints/
 .build*/

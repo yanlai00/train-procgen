@@ -8,8 +8,8 @@ import json
 import tensorflow as tf
 
 # from baselines.ppo2 import ppo2
-import ensemble_ppo
-from train_procgen.ensemble_ppo import Model, Runner, EnsembleCnnPolicy
+import ensemble_ppo2
+from train_procgen.ensemble_ppo2 import Model, Runner, EnsembleCnnPolicy2
 from train_procgen.random_ppo import safemean
 from train_procgen.crop_ppo import sf01, constfn
 
@@ -29,9 +29,9 @@ from mpi4py import MPI
 import argparse
 from collections import deque
 
-SAVE_PATH = "log2/ensemble"
+SAVE_PATH = "log2/ensemble2"
 
-num_envs = 64 
+num_envs = 32 # NOTE: half of ensemble_ppo since we have 2 envs 
 learning_rate = 5e-4
 ent_coef = .01
 gamma = .999
@@ -48,13 +48,13 @@ use_vf_clipping = True
 TEST_START_LEVELS = [100, 1000, 5000] + [int(i * 1e4) for i in range(1, 10)]
 TRAIN_END_LEVELS = [25, 50, 100]
 
-def train(run_ID, save_path, load_path, venv, sess, logger, args):
-    logger.info("obs space:", venv.observation_space)
+def train(run_ID, save_path, load_path, env1, env2, sess, logger, args):
     logger.info("training")
     with sess.as_default():
-        model = ensemble_ppo.learn(
+        model = ensemble_ppo2.learn(
             sess=sess,
-            env=venv,
+            env1=env1,
+            env2=env2,
             network=None,
             total_timesteps=args.total_tsteps,
             save_interval=2, ## doesn't matter, always save in the end for now
@@ -76,6 +76,7 @@ def train(run_ID, save_path, load_path, venv, sess, logger, args):
             max_grad_norm=0.5,
         )
         logger.info("saving model to: ", save_path)
+        
         model.save(save_path)
 
 class TestRunner(AbstractEnvRunner):
@@ -282,10 +283,10 @@ def main():
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
 
     if args.test:
-        logpath = join('log2/ensemble', args.env_name, 'test', run_ID)
+        logpath = join('log2/ensemble2', args.env_name, 'test', run_ID)
     else:
-        logpath = join('log2/ensemble', args.env_name, 'train', run_ID)
-        save_path = join( SAVE_PATH, args.env_name, 'saved_ensemble_v{}.tar'.format(args.run_id) )
+        logpath = join('log2/ensemble2', args.env_name, 'train', run_ID)
+        save_path = join( SAVE_PATH, args.env_name, 'saved_ensemble2_v{}.tar'.format(args.run_id) )
         logger.info("\n Model will be saved to file {}".format(save_path))
 
     if not os.path.exists(logpath):
@@ -306,15 +307,25 @@ def main():
             log_device_placement=True)# device_count={'GPU':0})
         config.gpu_options.allow_growth = True #pylint: disable=E1101
         sess = tf.compat.v1.Session(config=config)
-        logger.info("creating environment")
-        venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
-            num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
-        venv = VecExtractDictObs(venv, "rgb")
-        venv = VecMonitor(
-            venv=venv, filename=None, keep_buf=100,
+        logger.info("creating 2 environments")
+        n_levels = int(args.num_levels / 2)
+        env1 = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
+            num_levels=n_levels, start_level=0, distribution_mode=args.distribution_mode)
+        env1 = VecExtractDictObs(env1, "rgb")
+        env1 = VecMonitor(
+            venv=env1, filename=None, keep_buf=100,
         )
-        venv = VecNormalize(venv=venv, ob=False)
-        train(run_ID, save_path, load_path, venv, sess, logger, args)
+        env1 = VecNormalize(venv=env1, ob=False)
+
+        env2 = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
+            num_levels=n_levels, start_level=n_levels, distribution_mode=args.distribution_mode)
+        env2 = VecExtractDictObs(env2, "rgb")
+        env2 = VecMonitor(
+            venv=env2, filename=None, keep_buf=100,
+        )
+        env2 = VecNormalize(venv=env2, ob=False)
+
+        train(run_ID, save_path, load_path, env1, env2, sess, logger, args)
     else:
         use_model = args.use_model ## 1 or 2
         alt_flag = use_model - 1

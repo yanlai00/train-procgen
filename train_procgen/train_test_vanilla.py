@@ -29,7 +29,7 @@ import argparse
 import numpy as np
 from collections import deque
 
-SAVE_PATH = "log/vanilla"
+SAVE_PATH = "log2/vanilla"
 
 num_envs = 64 
 learning_rate = 5e-4
@@ -41,7 +41,7 @@ nminibatches = 8
 ppo_epochs = 3
 clip_range = .2
 #timesteps_per_proc = 20_000_000
-TIMESTEPS_PER_PROC = 5_000_000 ## default do **half** the tsteps ensemble did 
+TIMESTEPS_PER_PROC = 10_000_000 ## default do **half** the tsteps ensemble did 
 use_vf_clipping = True
 DROPOUT = 0.0
 L2_WEIGHT = 1e-5
@@ -207,18 +207,18 @@ def main():
         
     run_ID = 'run_'+str(args.run_id).zfill(2)
     if args.test:
+        args.log_interval = 1
+        args.total_tsteps = 1_000_000
         run_ID += '_test{}'.format(args.load_id)
     
     load_path = None
     if args.load_id > -1:
-        load_path = 'log/vanilla/saved_vanilla_v{}.tar'.format(args.load_id)
+        load_path = join(SAVE_PATH, args.env_name, 'saved_vanilla_v{}.tar'.format(args.load_id))
+    
     test_worker_interval = args.test_worker_interval
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-
     is_test_worker = False
-
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
 
@@ -229,10 +229,10 @@ def main():
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
 
     if args.test:
-        logpath = join('log/vanilla/test', run_ID)
+        logpath = join('log2/vanilla', args.env_name, 'test', run_ID)
     else:
-        logpath = join('log/vanilla/train', run_ID)
-        save_path = join( SAVE_PATH, "saved_vanilla_v{}.tar".format(args.run_id) )
+        logpath = join('log2/vanilla', args.env_name, 'train', run_ID)
+        save_path = join( SAVE_PATH, args.env_name, "saved_vanilla_v{}.tar".format(args.run_id) )
         logger.info("\n Model will be saved to file {}".format(save_path))
 
     if not os.path.exists(logpath):

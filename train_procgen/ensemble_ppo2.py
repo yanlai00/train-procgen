@@ -14,7 +14,7 @@ from collections import deque
 from train_procgen.policies import RandomCnnPolicy, CnnPolicy
 USE_COLOR_TRANSFORM = 0
 ## NOTE: subclass this instead of standard CNN!!
-from policies import random_impala_cnn
+
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.models import build_impala_cnn
 from baselines.common.policies import build_policy
@@ -36,7 +36,7 @@ from baselines.common.distributions import make_pdtype
 DROPOUT = 0.0
 L2_WEIGHT = 1e-5
 FM_COEFF = 0.1
-ALT_THRES = 0.5 # clean inputs are used with this probability α  
+ALT_THRES = 0.5 
 ## Deleted MPIAdamoptimizer, needed when comm.Get_size() > 1 (rn ==1)
 def impala_cnn(images, depths=[16, 32, 32]):
     """
@@ -121,7 +121,7 @@ def observation_input(ob_space, batch_size=None, name='Ob'):
     placeholder = tf.placeholder(shape=(batch_size,) + shape, dtype=dtype, name=name)
     return placeholder, encode_observation(ob_space, placeholder)
 
-class EnsembleCnnPolicy(CnnPolicy): ## Not considering color_transform!
+class EnsembleCnnPolicy2(CnnPolicy): ## Not considering color_transform!
     def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
         self.pdtype = make_pdtype(ac_space)
         X, processed_x = observation_input(ob_space, nbatch)
@@ -244,7 +244,7 @@ class Model(object):
         loss1 = pg_loss1 - entropy1 * ent_coef + vf_loss1 * vf_coef + l2_loss1 * L2_WEIGHT + fm_loss * FM_COEFF
         loss2 = pg_loss2 - entropy2 * ent_coef + vf_loss2 * vf_coef + l2_loss2 * L2_WEIGHT + fm_loss * FM_COEFF
 
-        trainer = tf.train.AdamOptimizer(learning_rate=LR, epsilon=1e-5)
+        trainer = tf.compat.v1.train.AdamOptimizer(learning_rate=LR, epsilon=1e-5)
 
         grads_and_var1 = trainer.compute_gradients(loss1, params)
         grads_and_var2 = trainer.compute_gradients(loss2, params)
@@ -323,8 +323,19 @@ class Model(object):
         initialize()
 
 class Runner(AbstractEnvRunner):
-    def __init__(self, *, env, model, nsteps, gamma, lam):
-        super().__init__(env=env, model=model, nsteps=nsteps)
+    def __init__(self, *, env1, env2, model, nsteps, gamma, lam):
+        self.env1 = env1
+        self.env2 = env2
+        self.model = model
+        self.nenv = nenv = env1.num_envs if hasattr(env1, 'num_envs') else 1
+        self.batch_ob_shape = (nenv*nsteps,) + env1.observation_space.shape
+        self.obs = np.zeros((nenv,) + env1.observation_space.shape, dtype=env1.observation_space.dtype.name)
+        self.obs[:] = env1.reset()
+        _ = env2.reset()
+        self.nsteps = nsteps
+        self.states = model.initial_state
+        self.dones = [False for _ in range(nenv)]
+
         self.lam = lam
         self.gamma = gamma
         
@@ -334,6 +345,10 @@ class Runner(AbstractEnvRunner):
         mb_states = self.states
         epinfos = []
         # For n in range number of steps
+        if alt_flag:
+            env = self.env2
+        else:
+            env = self.env1
         for _ in range(self.nsteps):
             # Given observations, get action value and neglopacs
             # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
@@ -346,7 +361,7 @@ class Runner(AbstractEnvRunner):
 
             # Take actions in env and look at the results
             # Infos contains a ton of useful informations
-            self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            self.obs[:], rewards, self.dones, infos = env.step(actions)
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
@@ -396,7 +411,7 @@ def constfn(val):
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
 
-def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
+def learn(*, network, sess, env1, env2, nsteps, total_timesteps, ent_coef, lr,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, save_path=None, load_path=None, **network_kwargs):
@@ -410,13 +425,14 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     else: assert callable(cliprange)
     total_timesteps = int(total_timesteps)
 
+    env = env1
     nenvs = env.num_envs
     ob_space = env.observation_space
     ac_space = env.action_space
     nbatch = nenvs * nsteps
     
     nbatch_train = nbatch // nminibatches
-    policy = EnsembleCnnPolicy
+    policy = EnsembleCnnPolicy2
     model = Model(policy=policy, sess=sess, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
@@ -426,7 +442,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     if load_path is not None:
         model.load(load_path)
         logger.info("Model pramas loaded from save")
-    runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
+    runner = Runner(env1=env1, env2=env2, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
     logger.info("Initilizing runner")
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)
@@ -442,8 +458,8 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     train_t_total = 0
 
     can_save = True
-    checkpoints = list(range(0,2049,10))
-    saved_key_checkpoints = [False] * len(checkpoints)
+    # checkpoints = list(range(0,2049,10))
+    # saved_key_checkpoints = [False] * len(checkpoints)
     #init_rand = tf.variables_initializer([v for v in tf.global_variables() if 'randcnn' in v.name])
 
     # if Config.SYNC_FROM_ROOT and rank != 0:
@@ -464,7 +480,8 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
 
         logger.info('collecting rollouts...')
         run_tstart = time.time()
-        alt_flag = np.random.rand(1)[0] > ALT_THRES 
+        ## just do half-half
+        alt_flag = int(update % 2)
         obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(alt_flag)
         epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)
