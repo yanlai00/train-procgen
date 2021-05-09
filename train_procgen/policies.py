@@ -513,10 +513,6 @@ class CrossCnnPolicy(CnnPolicy): ## Not considering color_transform!
         self.step = step
         self.value = value
 
-CutoutCnnPolicy = CrossCnnPolicy
-AugCnnPolicy = CrossCnnPolicy
-RecenterCnnPolicy = CrossCnnPolicy
-
 def crop_impala_cnn(images, depths=[16, 32, 32]):
     """
     Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 

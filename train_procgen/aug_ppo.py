@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
-from train_procgen.policies import RandomCnnPolicy, CnnPolicy, EnsembleCnnPolicy, impala_cnn, random_impala_cnn, cut_impala_cnn, CrossCnnPolicy, CutoutCnnPolicy
+from .policies import RandomCnnPolicy, CnnPolicy, EnsembleCnnPolicy, CrossCnnPolicy, RandCropCnnPolicy
 USE_COLOR_TRANSFORM = 0
 from .utils import observation_input, sf01, constfn, safemean
 from .models import BaseModel
@@ -20,96 +20,40 @@ from baselines.common.tf_util import initialize
 from baselines.common.mpi_util import sync_from_root
 from baselines.common.distributions import make_pdtype
 
+from .data_augs import recenter, vanilla, crosscut, cutout, jitter, randcrop
+
 FM_COEFF = 0.002
 REAL_THRES = 0.1
 
-BOT_NORM = np.array([[[0.15532861, 0.15149334, 0.14286397],
-        [0.16204034, 0.15916389, 0.14478161],
-        [0.18217553, 0.17738144, 0.15820507]],
+POLICIES = {
+    "cutout": CrossCnnPolicy,
+    "cross": CrossCnnPolicy,
+    "randcrop": RandCropCnnPolicy,
+    "recenter": CrossCnnPolicy,
+    "vanilla": RandomCnnPolicy,
+    "jitter": CrossCnnPolicy
+    # "random": random_ppo
+    }
 
-       [[0.16683444, 0.16683444, 0.16683444],
-        [0.1802579 , 0.18121672, 0.1754638 ],
-        [0.15341098, 0.15341098, 0.14190515]],
+AUG_FUNCs = {
+    "cutout": cutout,
+    "cross": crosscut,
+    "randcrop": randcrop,
+    "recenter": recenter,
+    "vanilla": vanilla,
+    "jitter": jitter
+    # "random": random_ppo
+    }
 
-       [[0.16012271, 0.1649168 , 0.17066971],
-        [0.15820507, 0.16204034, 0.16299916],
-        [0.16971089, 0.17450499, 0.16875207]],
-
-       [[0.16587562, 0.1754638 , 0.18505199],
-        [0.15532861, 0.16395798, 0.16875207],
-        [0.17929908, 0.18888727, 0.18984608]]])
-
-def recenter(obs, bot_norm):
-    """
-    Takes in original obs and recenter to agent-centric
-    """
-    recentered = []
-    for i in range(obs.shape[0]): ## iterate through envs
-        one_obs = obs[i]
-        piece = np.transpose(one_obs[:][57:57+4][:], (1,0,2))
-        bg = np.zeros((64*2, 64, 3), dtype=np.uint8)
-        diff_min = 100
-        loc_min = -1
-        for loc in range(64-3):
-            block = piece[loc:loc+3]
-            block = np.transpose(block, (1,0,2))
-            diff = abs(np.sum(bot_norm - block/np.linalg.norm(block)))
-            if diff < diff_min:
-                diff_min = diff
-                loc_min = loc
-        blk = piece[loc_min:loc_min+3]
-        #print("detected loc: ", loc_min)
-        center = 62 - loc_min
-        bg[center:center+64] = one_obs.transpose((1,0,2))
-        recentered.append(bg.transpose((1,0,2)))
-    recentered = np.array(recentered)
-    return recentered
-
-def vanilla(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
-    return obs
-
-def crosscut(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
-    x = np.random.randint(46)
-    y = np.random.randint(64)
-    obs[:, :, y:y+3,:] = 0
-    obs[:, x:x+4,:,:] = 0
-    return obs
-
-def cutout(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
-    x = np.random.randint(46)
-    obs[:, x:x+4,:,:] = 0
-    return obs
-
-def jitter(obs):
-    i = np.random.randint(3)
-    jitter = np.random.randint(0,50,(64,64), dtype=np.uint8)
-    obs[:,:,:,i] += jitter
-    return obs
-
-def randcrop(obs, shape=(32, 32)): ##obs.shape==320,64,64,3
-    """
-    Takes in original obs and randomly crop 
-    to a 55x55 
-    """
-    x, y = np.random.randint(15,size=(2,))
-    obs[:, :, :y,:] = 0
-    obs[:, :, 64-y:, :] = 0
-    return obs
-
-def augment(obs):
-    cpy1 = crosscut(obs.copy())
-    cpy2 = randcrop(obs.copy())
-    cpy3 = cutout(obs.copy())
-    return np.concatenate([cpy1, cpy2, cpy3, obs], axis=0)
-
-
-def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
+def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, save_path=None, load_path=None, **network_kwargs):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     mpi_size = comm.Get_size()
+
+    aug_func = AUG_FUNCs[agent_str]
 
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
@@ -123,7 +67,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     nbatch = nenvs * nsteps
     
     nbatch_train = nbatch // nminibatches
-    policy = CrossCnnPolicy # TODO
+    policy = POLICIES[agent_str]
     model = BaseModel(policy=policy, sess=sess, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
@@ -132,7 +76,7 @@ def learn(*, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
     if load_path is not None:
         model.load(load_path)
         logger.info("Model pramas loaded from save")
-    runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam, aug_func=vanilla) # TODO
+    runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam, aug_func=aug_func)
     logger.info("Initilizing runner")
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)

@@ -5,24 +5,7 @@ import tensorflow as tf
 
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
-import random_ppo
-import cutout_ppo
-import crop_ppo
-import cross_ppo
-import randcuts_ppo
-import recenter_ppo
-import aug_ppo
-
-PPO_FUNCs = {
-    "cutout": cutout_ppo,
-    "randcuts": randcuts_ppo,
-    "cross": cross_ppo,
-    "randcrop": crop_ppo,
-    "recenter": recenter_ppo,
-    "vanilla": ppo2,
-    "random": random_ppo,
-    "aug": aug_ppo
-    }
+from .aug_ppo import learn
 
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -75,7 +58,6 @@ def main():
     agent_str = args.use
     LOG_DIR = join("log", agent_str, "train")
     save_model = join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.run_id) )
-    ppo_func = PPO_FUNCs[agent_str]
     load_path = None
     if args.load_id > -1:
         load_path =  join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.load_id) )
@@ -87,7 +69,7 @@ def main():
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
     mpi_rank_weight = 0 if is_test_worker else 1
-    num_levels = 0 if is_test_worker else num_levels
+    num_levels = 0 if is_test_worker else args.num_levels
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
@@ -127,7 +109,8 @@ def main():
     logger.info(venv.observation_space)
     logger.info("training")
     with sess.as_default():
-        model = ppo_func.learn(
+        model = learn(
+                agent_str=agent_str,
                 sess=sess,
                 env=venv,
                 network=network,
