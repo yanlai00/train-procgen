@@ -1,6 +1,21 @@
-## CS182 Final Project, Spring 2020 
-# Train a Fruitbot Agent that Learns Fast and Generalizes Well
-![](rendered0.jpg)
+**Status:** Archive (code is provided as-is, no updates expected)
+
+# Leveraging Procedural Generation to Benchmark Reinforcement Learning
+
+#### [[Blog Post]](https://openai.com/blog/procgen-benchmark/) [[Paper]](https://arxiv.org/abs/1912.01588)
+
+This is code for training agents for some of the experiments in [Leveraging Procedural Generation to Benchmark Reinforcement Learning](https://cdn.openai.com/procgen.pdf) [(citation)](#citation).  The code for the environments is in the [Procgen Benchmark](https://github.com/openai/procgen) repo.
+
+We're currently running a competition which uses these environments to measure sample efficiency and generalization in RL. You can learn more and register [here](https://www.aicrowd.com/challenges/neurips-2020-procgen-competition).
+
+Supported platforms:
+
+- macOS 10.14 (Mojave)
+- Ubuntu 16.04
+
+Supported Pythons:
+
+- 3.7 64-bit
 
 
 ## Setup on Google Colab Platform
@@ -74,50 +89,4 @@ taskset -c 0-20 python train_procgen/test_select.py --start_level 80000 -id 10 -
 taskset -c 0-20 python train_procgen/test_select.py --start_level 90000 -id 11 --load_id ${LOAD} --use ${USE}
 taskset -c 0-20 python train_procgen/test_select.py --start_level 95000 -id 12 --load_id ${LOAD} --use ${USE}
 
-```
-
-
-
-Original train-procgen README:
-
-**Status:** Archive (code is provided as-is, no updates expected)
-
-### Leveraging Procedural Generation to Benchmark Reinforcement Learning
-
-##### [[Blog Post]](https://openai.com/blog/procgen-benchmark/) [[Paper]](https://arxiv.org/abs/1912.01588)
-
-This is code for training agents for some of the experiments in [Leveraging Procedural Generation to Benchmark Reinforcement Learning](https://cdn.openai.com/procgen.pdf) [(citation)](#citation).  The code for the environments is in the [Procgen Benchmark](https://github.com/openai/procgen) repo.
-
-Supported platforms:
-
-- macOS 10.14 (Mojave)
-- Ubuntu 16.04
-
-Supported Pythons:
-
-- 3.7 64-bit
-
-## Install
-
-You can get miniconda from https://docs.conda.io/en/latest/miniconda.html if you don't have it, or install the dependencies from [`environment.yml`](environment.yml) manually.
-
-```
-git clone https://github.com/openai/train-procgen.git
-conda env update --name train-procgen --file train-procgen/environment.yml
-conda activate train-procgen
-pip install https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip
-pip install -e train-procgen
-```
-
-# Citation
-
-Please cite using the following bibtex entry:
-
-```
-@article{cobbe2019procgen,
-  title={Leveraging Procedural Generation to Benchmark Reinforcement Learning},
-  author={Cobbe, Karl and Hesse, Christopher and Hilton, Jacob and Schulman, John},
-  journal={arXiv preprint arXiv:1912.01588},
-  year={2019}
-}
 ```

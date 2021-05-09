@@ -87,7 +87,7 @@ def main():
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
     mpi_rank_weight = 0 if is_test_worker else 1
-    num_levels = 0 if is_test_worker else args.num_levels
+    num_levels = 0 if is_test_worker else num_levels
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
     format_strs = ['csv', 'stdout', 'log'] if log_comm.Get_rank() == 0 else []
@@ -152,6 +152,36 @@ def main():
                 comm=comm,
             )
         model.save(save_model)
+
+def main():
+    parser = argparse.ArgumentParser(description='Process procgen training arguments.')
+    parser.add_argument('--env_name', type=str, default='coinrun')
+    parser.add_argument('--num_envs', type=int, default=64)
+    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
+    parser.add_argument('--num_levels', type=int, default=0)
+    parser.add_argument('--start_level', type=int, default=0)
+    parser.add_argument('--test_worker_interval', type=int, default=0)
+    parser.add_argument('--timesteps_per_proc', type=int, default=50_000_000)
+
+    args = parser.parse_args()
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    is_test_worker = False
+    test_worker_interval = args.test_worker_interval
+
+    if test_worker_interval > 0:
+        is_test_worker = rank % test_worker_interval == (test_worker_interval - 1)
+
+    train_fn(args.env_name,
+        args.num_envs,
+        args.distribution_mode,
+        args.num_levels,
+        args.start_level,
+        args.timesteps_per_proc,
+        is_test_worker=is_test_worker,
+        comm=comm)
 
 if __name__ == '__main__':
     main()
