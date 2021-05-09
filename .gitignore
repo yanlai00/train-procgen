@@ -7,3 +7,5 @@ log2/*
 .generated/
 *.egg-info/
 saved_models/
+.vscode/
+.DS_Store

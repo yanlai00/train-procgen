@@ -28,6 +28,7 @@ from train_procgen.random_ppo import safemean
 from train_procgen.crop_ppo import RandCropCnnPolicy, sf01, constfn
 from train_procgen.cutout_ppo import CutoutCnnPolicy
 from train_procgen.cross_ppo import CrossCnnPolicy
+from train_procgen.recenter_ppo import RecenterCnnPolicy
 from baselines.common.runners import AbstractEnvRunner
 from collections import deque
 
@@ -99,7 +100,7 @@ def main():
     nminibatches = 8
     ppo_epochs = 3
     clip_range = .2
-    total_timesteps = 1_000_000 ## now this counts steps in testing runs
+    total_timesteps = 1_000_000
     use_vf_clipping = True
 
     ## From random_ppo.py
@@ -148,6 +149,19 @@ def main():
         load_model = "log/randcuts/saved_randcuts_v{}.tar".format(args.load_id)
         from train_procgen.randcuts_ppo import Model, Runner
         policy = CrossCnnPolicy
+    if args.use == "recenter":
+        LOG_DIR = 'log/recenter/test'
+        load_model = "log/recenter/saved_recenter_v{}.tar".format(args.load_id)
+        from train_procgen.recenter_ppo import Model, Runner
+        policy = RecenterCnnPolicy
+    # if args.use == "vanilla":
+    #     LOG_DIR = 'log/vanilla/test'
+    #     load_model = "log/vanilla/saved_recenter_v{}.tar".format(args.load_id)
+    #     from baselines.ppo2 import Model, Runner
+    #     from baselines.common.models import build_impala_cnn
+    #     from baselines.common.policies import build_policy
+    #     network = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+    #     policy = build_policy(venv, network)
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -206,8 +220,6 @@ def main():
 
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)
-    # tfirststart = time.time() ## Not doing timing yet
-    # active_ep_buf = epinfobuf100
 
     mean_rewards = []
     datapoints = []

@@ -1,30 +1,15 @@
-"""
-Source: 
-    Kimin's code https://github.com/pokaxpoka/netrand/blob/master/sources/policies.py 
-Usage: 
-    see train-procgen/random_ppo.py
-TODO:
-    1) want "bigger IMPALA-CNN x 4" ? (I think 4 is increasing channel size)
-        When we scale the number of IMPALA channels by k, we also scale the learning rate by 1/√k
-
-NOTE:
-    1) again, openai/coinrun Configs are replaced with hard-coded global variables
-    Kimin's paper used this code to also implement other related methods to show out-performance,
-    what we actually need for now are random_impala_cnn() and class RandomCnnPolicy
-"""
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.distributions import make_pdtype
 from baselines.common.input import observation_input
-# from coinrun.config import Config 
-## Hard-coding:###
+
 DROPOUT = 0.0
 ARCHITECTURE =  'impala'
 USE_COLOR_TRANSFORM = 0
 USE_BATCH_NORM = 1
-##################
+
 def impala_cnn(images, depths=[16, 32, 32]):
     """
     Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 
@@ -385,4 +370,248 @@ class RandomCnnPolicy(object):
         self.value = value
         self.step_with_clean = step_with_clean
         self.value_with_clean = value_with_clean
+
+def cut_impala_cnn(images, depths=[16, 32, 32]):
+    use_batch_norm = True
+
+    dropout_layer_num = [0]
+    dropout_assign_ops = []
+
+    def dropout_layer(out):
+        if DROPOUT > 0:
+            out_shape = out.get_shape().as_list()
+            num_features = np.prod(out_shape[1:])
+
+            var_name = 'mask_' + str(dropout_layer_num[0])
+            batch_seed_shape = out_shape[1:]
+            batch_seed = tf.get_variable(var_name, shape=batch_seed_shape, initializer=tf.random_uniform_initializer(minval=0, maxval=1), trainable=False)
+            batch_seed_assign = tf.assign(batch_seed, tf.random_uniform(batch_seed_shape, minval=0, maxval=1))
+            dropout_assign_ops.append(batch_seed_assign)
+
+            curr_mask = tf.sign(tf.nn.relu(batch_seed[None,...] - DROPOUT))
+
+            curr_mask = curr_mask * (1.0 / (1.0 - DROPOUT))
+            out = out * curr_mask
+
+        dropout_layer_num[0] += 1
+
+        return out
+
+    def conv_layer(out, depth):
+        out = tf.layers.conv2d(out, depth, 3, padding='same')
+        out = dropout_layer(out)
+
+        if use_batch_norm:
+            out = tf.contrib.layers.batch_norm(out, center=True, scale=True, is_training=True)
+
+        return out
+
+    def residual_block(inputs):
+        depth = inputs.get_shape()[-1].value
+        
+        out = tf.nn.relu(inputs)
+
+        out = conv_layer(out, depth)
+        out = tf.nn.relu(out)
+        out = conv_layer(out, depth)
+        return out + inputs
+
+    def conv_sequence(inputs, depth):
+        out = conv_layer(inputs, depth)
+        out = tf.layers.max_pooling2d(out, pool_size=3, strides=2, padding='same')
+        out = residual_block(out)
+        out = residual_block(out)
+        return out
+
+    out = images
+
+    for depth in depths:
+        out = conv_sequence(out, depth)
+
+    out = tf.layers.flatten(out)
+    out = tf.nn.relu(out)
+    out = tf.layers.dense(out, 256, activation=tf.nn.relu)
+
+    return out, dropout_assign_ops
+
+class EnsembleCnnPolicy(CnnPolicy): ## Not considering color_transform!
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
+        self.pdtype = make_pdtype(ac_space)
+        X, processed_x = observation_input(ob_space, nbatch)
+
+        with tf.variable_scope("model1", reuse=tf.AUTO_REUSE):
+            processed_x3 = processed_x
+            h1, self.dropout_assign_ops1 = impala_cnn(processed_x3)
+            vf1 = fc(h1, 'v1', 1)[:,0]
+            self.pd1, self.pi1 = self.pdtype.pdfromlatent(h1, init_scale=0.01)
+
+        with tf.variable_scope("model2", reuse=tf.AUTO_REUSE):
+            processed_x3 = processed_x
+            h2, self.dropout_assign_ops2 = impala_cnn(processed_x3)
+            vf2 = fc(h2, 'v2', 1)[:,0]
+            self.pd2, self.pi2 = self.pdtype.pdfromlatent(h2, init_scale=0.01)
+
+        a0_1 = self.pd1.sample()
+        neglogp0_1 = self.pd1.neglogp(a0_1)
+
+        a0_2 = self.pd2.sample()
+        neglogp0_2 = self.pd1.neglogp(a0_2)
+
+
+        self.initial_state = None
+        
+        def alt_step(flag, ob, *_args, **_kwargs):
+            a1, v1, neglogp1, a2, v2, neglogp2 \
+            = sess.run([a0_1, vf1, neglogp0_1, a0_2, vf2, neglogp0_2], {X:ob})
+            if flag:
+                return a2, v2, self.initial_state, neglogp2
+            else:
+                return a1, v1, self.initial_state, neglogp1
+        
+        def alt_value(flag, ob, *_args, **_kwargs):
+            v1, v2 = sess.run([vf1, vf2], {X:ob})
+            if flag:
+                return v2
+            else:
+                return v1
+
+        self.X = X
+
+        self.H1 = h1
+        self.vf1 = vf1
+        
+        self.H2 = h2
+        self.vf2 = vf2
+
+        self.alt_step = alt_step
+        self.alt_value = alt_value
+
+class CrossCnnPolicy(CnnPolicy): ## Not considering color_transform!
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs):
+        self.pdtype = make_pdtype(ac_space)
+        X, processed_x = observation_input(ob_space, nbatch)
+
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+            processed_x3 = processed_x
+            h, self.dropout_assign_ops = cut_impala_cnn(processed_x3)
+            vf = fc(h, 'v', 1)[:,0]
+            self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
+
+        a0 = self.pd.sample()
+        neglogp0 = self.pd.neglogp(a0)
+        self.initial_state = None
+
+        def step(ob, *_args, **_kwargs):
+            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            return a, v, self.initial_state, neglogp
+
+        def value(ob, *_args, **_kwargs):
+            return sess.run(vf, {X:ob})
+
+        self.X = X
+        self.vf = vf
+        self.step = step
+        self.value = value
+
+CutoutCnnPolicy = CrossCnnPolicy
+AugCnnPolicy = CrossCnnPolicy
+RecenterCnnPolicy = CrossCnnPolicy
+
+def crop_impala_cnn(images, depths=[16, 32, 32]):
+    """
+    Model used in the paper "IMPALA: Scalable Distributed Deep-RL with 
+    Importance Weighted Actor-Learner Architectures" https://arxiv.org/abs/1802.01561
+    """
+    #use_batch_norm = Config.USE_BATCH_NORM == 1 NOTE: Should prob. use this???
+    use_batch_norm = True
+
+    dropout_layer_num = [0]
+    dropout_assign_ops = []
+
+    def dropout_layer(out):
+        if DROPOUT > 0:
+            out_shape = out.get_shape().as_list()
+            num_features = np.prod(out_shape[1:])
+
+            var_name = 'mask_' + str(dropout_layer_num[0])
+            batch_seed_shape = out_shape[1:]
+            batch_seed = tf.get_variable(var_name, shape=batch_seed_shape, initializer=tf.random_uniform_initializer(minval=0, maxval=1), trainable=False)
+            batch_seed_assign = tf.assign(batch_seed, tf.random_uniform(batch_seed_shape, minval=0, maxval=1))
+            dropout_assign_ops.append(batch_seed_assign)
+
+            curr_mask = tf.sign(tf.nn.relu(batch_seed[None,...] - DROPOUT))
+
+            curr_mask = curr_mask * (1.0 / (1.0 - DROPOUT))
+
+            out = out * curr_mask
+
+        dropout_layer_num[0] += 1
+
+        return out
+
+    def conv_layer(out, depth):
+        out = tf.layers.conv2d(out, depth, 3, padding='same')
+        out = dropout_layer(out)
+
+        if use_batch_norm:
+            out = tf.contrib.layers.batch_norm(out, center=True, scale=True, is_training=True)
+
+        return out
+
+    def residual_block(inputs):
+        depth = inputs.get_shape()[-1].value
+        
+        out = tf.nn.relu(inputs)
+
+        out = conv_layer(out, depth)
+        out = tf.nn.relu(out)
+        out = conv_layer(out, depth)
+        return out + inputs
+
+    def conv_sequence(inputs, depth):
+        out = conv_layer(inputs, depth)
+        out = tf.layers.max_pooling2d(out, pool_size=3, strides=2, padding='same')
+        out = residual_block(out)
+        out = residual_block(out)
+        return out
+
+    out = images
+
+    # out = tf.image.per_image_standardization(out)
+
+    for depth in depths:
+        out = conv_sequence(out, depth)
+
+    out = tf.layers.flatten(out)
+    out = tf.nn.relu(out)
+    out = tf.layers.dense(out, 256, activation=tf.nn.relu)
+
+    return out, dropout_assign_ops
+
+class RandCropCnnPolicy(CnnPolicy): ## Not considering color_transform!
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
+        self.pdtype = make_pdtype(ac_space)
+        X, processed_x = observation_input(ob_space, nbatch)
+
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+            processed_x3 = processed_x
+            h, self.dropout_assign_ops = crop_impala_cnn(processed_x3)
+            vf = fc(h, 'v', 1)[:,0]
+            self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
+
+        a0 = self.pd.sample()
+        neglogp0 = self.pd.neglogp(a0)
+        self.initial_state = None
+
+        def step(ob, *_args, **_kwargs):
+            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            return a, v, self.initial_state, neglogp
+
+        def value(ob, *_args, **_kwargs):
+            return sess.run(vf, {X:ob})
+
+        self.X = X
+        self.vf = vf
+        self.step = step
+        self.value = value
         

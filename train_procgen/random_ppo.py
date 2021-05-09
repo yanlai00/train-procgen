@@ -11,31 +11,27 @@ from policies.py and always build random cnn policy here.
 import time
 import joblib
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
-from train_procgen.policies import RandomCnnPolicy
+from train_procgen.policies import RandomCnnPolicy, CnnPolicy
+from policies import random_impala_cnn
+from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
 from baselines.common.models import build_impala_cnn
 from baselines.common.policies import build_policy
 from baselines import logger
 from mpi4py import MPI
 
-# from coinrun.tb_utils import TB_Writer
-# import coinrun.main_utils as utils
-# from coinrun.config import Config
-
-#logger.info = utils.logger.info
-
 from baselines.common.runners import AbstractEnvRunner
 from baselines.common.tf_util import initialize
 from baselines.common.mpi_util import sync_from_root
+from baselines.common.distributions import make_pdtype
 
 ## mentioned in paper imported from Config
+DROPOUT = 0.0
 L2_WEIGHT = 1e-5
 FM_COEFF = 1e-3
-# FM_COEFF = 0.01 random trying 
-#REAL_THRES = 0.1 # clean inputs are used with this probability α  
 REAL_THRES = 0.9
-## Deleted MPIAdamoptimizer, needed when comm.Get_size() > 1 (rn ==1)
 
 class Model(object):
     def __init__(self, *, policy, ob_space, ac_space, nbatch_act, nbatch_train,

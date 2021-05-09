@@ -1,13 +1,29 @@
-"""
-NOTE: run_09 is continuting from run_08!!! 
-python train_procgen/train.py -id 3 --num_levels 50
-"""
 import os
 from os.path import join
 import json
 import tensorflow as tf
+
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
+import random_ppo
+import cutout_ppo
+import crop_ppo
+import cross_ppo
+import randcuts_ppo
+import recenter_ppo
+import aug_ppo
+
+PPO_FUNCs = {
+    "cutout": cutout_ppo,
+    "randcuts": randcuts_ppo,
+    "cross": cross_ppo,
+    "randcrop": crop_ppo,
+    "recenter": recenter_ppo,
+    "vanilla": ppo2,
+    "random": random_ppo,
+    "aug": aug_ppo
+    }
+
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
 from baselines.common.vec_env import (
@@ -20,10 +36,9 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-LOG_DIR = 'log/vanilla/train'
 
 def main():
-    num_envs = 64
+    num_envs = 64  # 16?
     learning_rate = 5e-4
     ent_coef = .01
     gamma = .999
@@ -42,33 +57,35 @@ def main():
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
+    parser.add_argument('--use', type=str, default="randcrop")
+    parser.add_argument('--log_interval', type=int, default=20)
     parser.add_argument('--nupdates', type=int, default=0)
-    parser.add_argument('--log_interval', type=int, default=1)
     parser.add_argument('--total_tsteps', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=int(-1))
 
     args = parser.parse_args()
+    
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
     if not args.total_tsteps:
         args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
 
-
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    SAVE_PATH = "log/vanilla/saved_vanilla_v{}.tar".format(args.run_id)
+    ## select which ppo to use:
+    agent_str = args.use
+    LOG_DIR = join("log", agent_str, "train")
+    save_model = join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.run_id) )
+    ppo_func = PPO_FUNCs[agent_str]
     load_path = None
     if args.load_id > -1:
-        load_path = 'log/vanilla/saved_vanilla_v{}.tar'.format(args.load_id)
-    test_worker_interval = args.test_worker_interval
+        load_path =  join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.load_id) )
 
+    test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
-
     is_test_worker = False
-
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
-
     mpi_rank_weight = 0 if is_test_worker else 1
     num_levels = 0 if is_test_worker else args.num_levels
 
@@ -78,58 +95,63 @@ def main():
     logpath = join(LOG_DIR, run_ID)
     if not os.path.exists(logpath):
         os.system("mkdir -p %s" % logpath)
-    logger.configure(dir=logpath, format_strs=format_strs)   
+    logger.configure(dir=logpath, format_strs=format_strs)
 
     fpath = join(LOG_DIR, 'args_{}.json'.format(run_ID))
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
-    print("\nSaved args at:\n\t{}\n".format(fpath))
-
-    logger.info("saving to filename ", SAVE_PATH)
+    logger.info("\nSaved args at:\n\t{}\n".format(fpath))
+    logger.info("\n Saving model to file {}".format(save_model))
+    
     logger.info("creating environment")
-    venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
+    venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
+        num_levels=num_levels, start_level=args.start_level, distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
 
     venv = VecMonitor(
         venv=venv, filename=None, keep_buf=100,
     )
-
     venv = VecNormalize(venv=venv, ob=False)
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.ConfigProto(log_device_placement=True)#device_count={'GPU':0})
-    config.gpu_options.allow_growth = True #pylint: disable=E1101
-    sess = tf.Session(config=config)
-    sess.__enter__()
+    config = tf.compat.v1.ConfigProto(log_device_placement=True)
+    config.gpu_options.allow_growth = True
+    sess = tf.compat.v1.Session(config=config)
 
-    conv_fn = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+    if args.use == 'vanilla':
+        network = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
+    else:
+        network = None
 
+    logger.info(venv.observation_space)
     logger.info("training")
-    model = ppo2.learn(
-        env=venv,
-        network=conv_fn,
-        total_timesteps=args.total_tsteps,
-        nsteps=nsteps,
-        nminibatches=nminibatches,
-        lam=lam,
-        gamma=gamma,
-        noptepochs=ppo_epochs,
-        log_interval=args.log_interval,
-        ent_coef=ent_coef,
-        mpi_rank_weight=mpi_rank_weight,
-        clip_vf=use_vf_clipping,
-        comm=comm,
-        lr=learning_rate,
-        cliprange=clip_range,
-        load_path=load_path,
-        update_fn=None,
-        init_fn=None,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        save_interval=300
-    )
-    model.save(SAVE_PATH)
+    with sess.as_default():
+        model = ppo_func.learn(
+                sess=sess,
+                env=venv,
+                network=network,
+                total_timesteps=args.total_tsteps,
+                save_interval=1000,
+                nsteps=nsteps,
+                nminibatches=nminibatches,
+                lam=lam,
+                gamma=gamma,
+                noptepochs=ppo_epochs,
+                log_interval=args.log_interval,
+                ent_coef=ent_coef,
+                lr=learning_rate,
+                cliprange=clip_range,
+                save_path=save_model,
+                load_path=load_path,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+                clip_vf=use_vf_clipping,
+                update_fn=None,
+                init_fn=None,
+                comm=comm,
+            )
+        model.save(save_model)
 
 if __name__ == '__main__':
     main()
