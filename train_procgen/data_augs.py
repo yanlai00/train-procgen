@@ -16,7 +16,7 @@ BOT_NORM = np.array([[[0.15532861, 0.15149334, 0.14286397],
         [0.15532861, 0.16395798, 0.16875207],
         [0.17929908, 0.18888727, 0.18984608]]])
 
-def recenter(obs, bot_norm):
+def recenter(obs):
     """
     Takes in original obs and recenter to agent-centric
     """
@@ -30,7 +30,7 @@ def recenter(obs, bot_norm):
         for loc in range(64-3):
             block = piece[loc:loc+3]
             block = np.transpose(block, (1,0,2))
-            diff = abs(np.sum(bot_norm - block/np.linalg.norm(block)))
+            diff = abs(np.sum(BOT_NORM - block/np.linalg.norm(block)))
             if diff < diff_min:
                 diff_min = diff
                 loc_min = loc

@@ -1,6 +1,6 @@
 from baselines.common.runners import AbstractEnvRunner
 import matplotlib.pyplot as plt
-from .utils import observation_input, sf01, constfn
+from .utils import sf01
 import numpy as np
 
 
@@ -9,7 +9,7 @@ class Runner(AbstractEnvRunner):
         super().__init__(env=env, model=model, nsteps=nsteps)
         self.lam = lam
         self.gamma = gamma
-        if self.aug_func:
+        if aug_func:
             self.aug_func = aug_func
             self.obs = self.aug_func(self.obs)
             for i in range(10):
@@ -20,7 +20,7 @@ class Runner(AbstractEnvRunner):
         mb_states = self.states
         epinfos = []
         for _ in range(self.nsteps):
-            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones, clean_flag=clean_flag)
+            actions, values, self.states, neglogpacs = self.model.step(self.obs, clean_flag=clean_flag)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
             mb_values.append(values)
@@ -41,7 +41,7 @@ class Runner(AbstractEnvRunner):
         mb_values = np.asarray(mb_values, dtype=np.float32)
         mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
         mb_dones = np.asarray(mb_dones, dtype=np.bool)
-        last_values = self.model.value(self.obs, self.states, self.dones, clean_flag=clean_flag)
+        last_values = self.model.value(self.obs, clean_flag=clean_flag)
 
         mb_returns = np.zeros_like(mb_rewards)
         mb_advs = np.zeros_like(mb_rewards)

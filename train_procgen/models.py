@@ -12,7 +12,6 @@ class BaseModel(object):
                 nsteps, ent_coef, vf_coef, max_grad_norm, arch, use_batch_norm, dropout):
         logger.info("nbatch_train in Model init: ", nbatch_train)
         train_model = policy(sess, ob_space, ac_space, nbatch_train, nsteps, arch, use_batch_norm, dropout)
-        norm_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         logger.info("ac+obs space at model init: ", ob_space.shape, ac_space.shape)
         act_model = policy(sess, ob_space, ac_space, nbatch_act, 1, arch, use_batch_norm, dropout)
 
@@ -115,7 +114,6 @@ class RandomModel(object):
         
         train_model = policy(sess, ob_space, ac_space, nbatch_train, nsteps, arch, use_batch_norm, dropout)
             
-        norm_update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
         act_model = policy(sess, ob_space, ac_space, nbatch_act, 1, arch, use_batch_norm, dropout)
 
         A = train_model.pdtype.sample_placeholder([None])

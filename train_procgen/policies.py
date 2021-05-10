@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
-from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
+from baselines.a2c.utils import conv, fc, conv_to_fc
 from baselines.common.distributions import make_pdtype
 from baselines.common.input import observation_input
 
@@ -17,7 +16,6 @@ def impala_cnn(images, depths=[16, 32, 32], use_batch_norm=True, dropout=0):
     def dropout_layer(out):
         if dropout > 0:
             out_shape = out.get_shape().as_list()
-            num_features = np.prod(out_shape[1:])
 
             var_name = 'mask_' + str(dropout_layer_num[0])
             batch_seed_shape = out_shape[1:]
@@ -142,7 +140,6 @@ def random_impala_cnn(images, depths=[16, 32, 32], use_batch_norm=True, dropout=
     def dropout_layer(out):
         if dropout > 0:
             out_shape = out.get_shape().as_list()
-            num_features = np.prod(out_shape[1:])
 
             var_name = 'mask_' + str(dropout_layer_num[0])
             batch_seed_shape = out_shape[1:]
@@ -190,11 +187,7 @@ def random_impala_cnn(images, depths=[16, 32, 32], use_batch_norm=True, dropout=
     out = images
     
     # add random filter
-    num_colors    = 3
     randcnn_depth = 3
-    kernel_size   = 3
-    fan_in  = num_colors    * kernel_size * kernel_size
-    fan_out = randcnn_depth * kernel_size * kernel_size
     
     mask_vbox = tf.Variable(tf.zeros_like(images, dtype=bool), trainable=False)
     mask_shape = tf.shape(images)
@@ -223,7 +216,6 @@ class RandomCnnPolicy(object):
         
         X, processed_x = observation_input(ob_space, nbatch)
         scaled_images = tf.cast(processed_x, tf.float32) / 255.
-        mc_index = tf.placeholder(tf.int64, shape=[1], name='mc_index')
         
         with tf.variable_scope("model", reuse=tf.AUTO_REUSE):    
             h, self.dropout_assign_ops = random_impala_cnn(scaled_images, use_batch_norm=use_batch_norm, dropout=dropout)   

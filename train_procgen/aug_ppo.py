@@ -1,20 +1,15 @@
 import time
-import joblib
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
 from .policies import RandomCnnPolicy, CnnPolicy
-from .utils import observation_input, sf01, constfn, safemean
+from .utils import constfn, safemean
 from .models import BaseModel, RandomModel
 from .runner import Runner
 from baselines import logger
-from mpi4py import MPI
 
 
 from .data_augs import recenter, vanilla, crosscut, cutout, jitter, randcrop
-
-REAL_THRES = 0.9
 
 AUG_FUNCs = {
     "cutout": cutout,
@@ -23,16 +18,12 @@ AUG_FUNCs = {
     "recenter": recenter,
     "vanilla": vanilla,
     "jitter": jitter
-    # "random": random_ppo
     }
 
 def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps, ent_coef, lr, arch='impala', use_batch_norm=True, dropout=0, 
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, save_path=None, load_path=None, **network_kwargs):
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    mpi_size = comm.Get_size()
 
     aug_func = AUG_FUNCs[agent_str]
 
@@ -63,11 +54,9 @@ def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps
         model.load(load_path)
         logger.info("Model pramas loaded from save")
     runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam, aug_func=aug_func)
-    logger.info("Initilizing runner")
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)
     tfirststart = time.time()
-    active_ep_buf = epinfobuf100
 
     nupdates = total_timesteps//nbatch
     logger.info("Running {} updates, each needs {} batches".format(nupdates, nbatch))
@@ -77,9 +66,6 @@ def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps
     run_t_total = 0
     train_t_total = 0
 
-    can_save = True
-    checkpoints = list(range(0,2049,10))
-    saved_key_checkpoints = [False] * len(checkpoints)
     if use_netrand:
         init_rand = tf.variables_initializer([v for v in tf.global_variables() if 'randcnn' in v.name])
 
@@ -154,8 +140,6 @@ def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps
             rew_mean_100 = safemean([epinfo['r'] for epinfo in epinfobuf100])
             ep_len_mean_10 = np.nanmean([epinfo['l'] for epinfo in epinfobuf10])
             ep_len_mean_100 = np.nanmean([epinfo['l'] for epinfo in epinfobuf100])
-            
-            logger.info('\n----', update)
 
             mean_rewards.append(rew_mean_10)
             datapoints.append([step, rew_mean_10])
@@ -175,10 +159,7 @@ def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps
 
             if len(mblossvals):
                 for (lossval, lossname) in zip(lossvals, model.loss_names):
-                    logger.info(lossname, lossval)
-                    #tb_writer.log_scalar(lossval, lossname)
                     logger.logkv('loss/' + lossname, lossval)
-            logger.info('----\n')
             logger.dumpkvs()
 
     if save_path:

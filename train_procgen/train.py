@@ -37,15 +37,15 @@ def main():
     parser.add_argument('--num_levels', type=int, default=50)
     parser.add_argument('--start_level', type=int, default=0)
     parser.add_argument('--test_worker_interval', type=int, default=0)
+    parser.add_argument('--log_interval', type=int, default=10)
+    parser.add_argument('--nupdates', type=int, default=0)
+    parser.add_argument('--total_tsteps', type=int, default=0)
+    parser.add_argument('--load_id', type=int, default=int(-1))
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
     parser.add_argument('--arch', type=str, default="impala")
     parser.add_argument('--no_bn', dest='use_batch_norm', action='store_false')
     parser.add_argument('--dropout', type=float, default=0)
-    parser.add_argument('--log_interval', type=int, default=10)
-    parser.add_argument('--nupdates', type=int, default=0)
-    parser.add_argument('--total_tsteps', type=int, default=0)
-    parser.add_argument('--load_id', type=int, default=int(-1))
     parser.add_argument('--netrand', type=float, default=0)
     parser.set_defaults(use_batch_norm=True)
 
@@ -71,11 +71,9 @@ def main():
 
     test_worker_interval = args.test_worker_interval
     comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
     is_test_worker = False
     if test_worker_interval > 0:
         is_test_worker = comm.Get_rank() % test_worker_interval == (test_worker_interval - 1)
-    mpi_rank_weight = 0 if is_test_worker else 1
     num_levels = 0 if is_test_worker else args.num_levels
 
     log_comm = comm.Split(1 if is_test_worker else 0, 0)
@@ -90,7 +88,6 @@ def main():
     with open(fpath, 'w') as fh:
         json.dump(vars(args), fh, indent=4, sort_keys=True)
     logger.info("\nSaved args at:\n\t{}\n".format(fpath))
-    logger.info("\n Saving model to file {}".format(save_model))
     
     logger.info("creating environment")
     venv = ProcgenEnv(num_envs=num_envs, env_name=args.env_name, 
@@ -104,7 +101,7 @@ def main():
 
     logger.info("creating tf session")
     setup_mpi_gpus()
-    config = tf.compat.v1.ConfigProto(log_device_placement=True)
+    config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
     sess = tf.compat.v1.Session(config=config)
 

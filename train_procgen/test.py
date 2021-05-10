@@ -27,23 +27,16 @@ from train_procgen.models import BaseModel as Model
 
 def main():
     num_envs = 64
-    learning_rate = 5e-4
     ent_coef = .01
     gamma = .999
     lam = .95
     nsteps = 256
     nminibatches = 8
-    ppo_epochs = 3
-    clip_range = .2
     total_timesteps = 1_000_000
-    use_vf_clipping = True
 
     ## From random_ppo.py
     max_grad_norm = 0.5
-    vf_coef=0.5
-    L2_WEIGHT = 10e-4
-    FM_COEFF = 0.002
-    REAL_THRES = 0.1    
+    vf_coef=0.5 
 
     parser = argparse.ArgumentParser(description='Process procgen testing arguments.')
     parser.add_argument('--env_name', type=str, default='fruitbot')
@@ -72,8 +65,6 @@ def main():
     load_model = "log/{}/saved_{}_v{}.tar".format(args.use, args.use, args.load_id) 
 
     comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    mpi_rank_weight = 0 
     num_levels = args.num_levels
 
     log_comm = comm.Split(0, 0)
