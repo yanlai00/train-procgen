@@ -103,49 +103,14 @@ def choose_cnn(images, arch='impala', use_batch_norm=True, dropout=0):
     return out, dropout_assign_ops
 
 class CnnPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, arch='impala', use_batch_norm=True, use_color_transform=False, **conv_kwargs):
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, arch='impala', use_batch_norm=True, dropout=0, **conv_kwargs):
         self.pdtype = make_pdtype(ac_space)
         X, processed_x = observation_input(ob_space, nbatch)
 
         with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
-            if use_color_transform:
-                out_shape = processed_x.get_shape().as_list()
-                
-                mask_vbox = tf.Variable(tf.zeros_like(processed_x, dtype=bool), trainable=False)
-                rh = .2 # hard-coded velocity box size
-                mh = int(out_shape[1]*rh)
-                mw = mh*2
-                mask_vbox = mask_vbox[:,:mh,:mw].assign(tf.ones([out_shape[0], mh, mw, out_shape[-1]], dtype=bool))
-                masked = tf.where(mask_vbox, x=tf.zeros_like(processed_x), y=processed_x)
-                
-                delta_brightness = tf.get_variable(
-                    name='randprocess_brightness',
-                    initializer=tf.random_uniform([], -.5, .5),                 
-                    trainable=False)
-                
-                delta_contrast = tf.get_variable(
-                    name='randprocess_contrast', 
-                    initializer=tf.random_uniform([], .5, 1.5),
-                    trainable=False,)
-                
-                delta_saturation = tf.get_variable(
-                    name='randprocess_saturation',
-                    initializer=tf.random_uniform([], .5, 1.5), 
-                    trainable=False,)
-                
-                processed_x1 = tf.image.adjust_brightness(masked, delta_brightness)
-                processed_x1 = tf.clip_by_value(processed_x1, 0., 255.)
-                processed_x1 = tf.where(mask_vbox, x=masked, y=processed_x1)
-                processed_x2 = tf.image.adjust_contrast(processed_x1, delta_contrast)
-                processed_x2 = tf.clip_by_value(processed_x2, 0., 255.)
-                processed_x2 = tf.where(mask_vbox, x=masked, y=processed_x2)
-                processed_x3 = tf.image.adjust_saturation(processed_x2, delta_saturation)
-                processed_x3 = tf.clip_by_value(processed_x3, 0., 255.)
-                processed_x3 = tf.where(mask_vbox, x=processed_x, y=processed_x3)
-            else:
-                processed_x3 = processed_x
+            processed_x3 = processed_x
             
-            h, self.dropout_assign_ops = choose_cnn(processed_x3, arch=arch, use_batch_norm=use_batch_norm)
+            h, self.dropout_assign_ops = choose_cnn(processed_x3, arch=arch, use_batch_norm=use_batch_norm, dropout=dropout)
             vf = fc(h, 'v', 1)[:,0]
             self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
 
@@ -153,11 +118,11 @@ class CnnPolicy(object):
         neglogp0 = self.pd.neglogp(a0)
         self.initial_state = None
 
-        def step(ob, *_args, **_kwargs):
+        def step(ob, clean_flag, *_args, **_kwargs):
             a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
             return a, v, self.initial_state, neglogp
 
-        def value(ob, *_args, **_kwargs):
+        def value(ob, clean_flag, *_args, **_kwargs):
             return sess.run(vf, {X:ob})
 
         self.X = X
@@ -253,7 +218,7 @@ def random_impala_cnn(images, depths=[16, 32, 32], use_batch_norm=True, dropout=
     return out, dropout_assign_ops
 
 class RandomCnnPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, use_batch_norm=True, dropout=0, **conv_kwargs):
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, arch='impala', use_batch_norm=True, dropout=0, **conv_kwargs):
         self.pdtype = make_pdtype(ac_space)
         
         X, processed_x = observation_input(ob_space, nbatch)
@@ -278,24 +243,17 @@ class RandomCnnPolicy(object):
         
         self.initial_state = None
             
-        def step(ob, *_args, **_kwargs):
-            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
-            return a, v, self.initial_state, neglogp
-        
-        def value(ob, *_args, **_kwargs):
-            return sess.run(vf, {X:ob})
-        
-        def step_with_clean(flag, ob, *_args, **_kwargs):
+        def step(ob, clean_flag, *_args, **_kwargs):
             a, v, neglogp, c_a, c_v, c_neglogp \
             = sess.run([a0, vf, neglogp0, clean_a0, clean_vf, clean_neglogp0], {X:ob})
-            if flag:
+            if clean_flag:
                 return c_a, c_v, self.initial_state, c_neglogp
             else:
                 return a, v, self.initial_state, neglogp
-            
-        def value_with_clean(flag, ob, *_args, **_kwargs):
+        
+        def value(ob, clean_flag, *_args, **_kwargs):
             v, c_v = sess.run([vf, clean_vf], {X:ob})
-            if flag:
+            if clean_flag:
                 return c_v
             else:
                 return v
@@ -308,5 +266,3 @@ class RandomCnnPolicy(object):
         
         self.step = step
         self.value = value
-        self.step_with_clean = step_with_clean
-        self.value_with_clean = value_with_clean

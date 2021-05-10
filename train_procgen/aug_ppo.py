@@ -5,35 +5,16 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
 from .policies import RandomCnnPolicy, CnnPolicy
-USE_COLOR_TRANSFORM = 0
 from .utils import observation_input, sf01, constfn, safemean
-from .models import BaseModel
+from .models import BaseModel, RandomModel
 from .runner import Runner
-from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm
-from baselines.common.models import build_impala_cnn
-from baselines.common.policies import build_policy
 from baselines import logger
 from mpi4py import MPI
 
-from baselines.common.runners import AbstractEnvRunner
-from baselines.common.tf_util import initialize
-from baselines.common.mpi_util import sync_from_root
-from baselines.common.distributions import make_pdtype
 
 from .data_augs import recenter, vanilla, crosscut, cutout, jitter, randcrop
 
-FM_COEFF = 0.002
-REAL_THRES = 0.1
-
-POLICIES = {
-    "cutout": RandomCnnPolicy,
-    "cross": RandomCnnPolicy,
-    "randcrop": RandomCnnPolicy,
-    "recenter": RandomCnnPolicy,
-    "vanilla": CnnPolicy,
-    "jitter": RandomCnnPolicy
-    # "random": random_ppo
-    }
+REAL_THRES = 0.9
 
 AUG_FUNCs = {
     "cutout": cutout,
@@ -45,7 +26,7 @@ AUG_FUNCs = {
     # "random": random_ppo
     }
 
-def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, lr,
+def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps, ent_coef, lr, arch='impala', use_batch_norm=True, dropout=0, 
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, save_path=None, load_path=None, **network_kwargs):
@@ -67,11 +48,16 @@ def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, l
     nbatch = nenvs * nsteps
     
     nbatch_train = nbatch // nminibatches
-    policy = POLICIES[agent_str]
-    model = BaseModel(policy=policy, sess=sess, ob_space=ob_space, ac_space=ac_space, 
+    if use_netrand:
+        policy = RandomCnnPolicy
+        Model = RandomModel
+    else:
+        policy = CnnPolicy
+        Model = BaseModel
+    model = Model(policy=policy, sess=sess, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
-        max_grad_norm=max_grad_norm)
+        max_grad_norm=max_grad_norm, arch=arch, use_batch_norm=use_batch_norm, dropout=dropout)
 
     if load_path is not None:
         model.load(load_path)
@@ -94,6 +80,8 @@ def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, l
     can_save = True
     checkpoints = list(range(0,2049,10))
     saved_key_checkpoints = [False] * len(checkpoints)
+    if use_netrand:
+        init_rand = tf.variables_initializer([v for v in tf.global_variables() if 'randcnn' in v.name])
 
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
@@ -104,14 +92,17 @@ def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, l
         cliprangenow = cliprange(frac)
 
         run_tstart = time.time()
-        
-        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run()
+        if use_netrand:
+            sess.run(init_rand)
+            clean_flag = np.random.rand(1)[0] < use_netrand
+        else:
+            clean_flag = 0
+        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run(clean_flag)
         epinfobuf10.extend(epinfos)
         epinfobuf100.extend(epinfos)
 
         run_elapsed = time.time() - run_tstart
         run_t_total += run_elapsed
-        #logger.info('rollouts complete')
 
         mblossvals = []
 
@@ -126,7 +117,10 @@ def learn(*, agent_str, network, sess, env, nsteps, total_timesteps, ent_coef, l
                     end = start + nbatch_train
                     mbinds = inds[start:end]
                     slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mblossvals.append(model.train(lrnow, cliprangenow, *slices))
+                    if clean_flag:
+                        mblossvals.append(model.clean_train(lrnow, cliprangenow, *slices))
+                    else:
+                        mblossvals.append(model.train(lrnow, cliprangenow, *slices))
                         
         else:
             assert nenvs % nminibatches == 0

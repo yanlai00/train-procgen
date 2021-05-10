@@ -1,9 +1,3 @@
-"""
-To run test: (default we do 50 batch rollouts)
-$ python train_procgen/test_select.py --start_level 50 -id 0 --load_id 0 --use "randcrop"
-$ python train_procgen/test_select.py --start_level 50 -id 0 --load_id 0 --use "cutout"
-$ 
-"""
 import os
 from os.path import join
 import json
@@ -55,12 +49,12 @@ def main():
     parser.add_argument('--env_name', type=str, default='fruitbot')
     parser.add_argument('--distribution_mode', type=str, default='easy', choices=["easy", "hard", "exploration", "memory", "extreme"])
     parser.add_argument('--num_levels', type=int, default=1000)
-    ## default starting_level set to 50 to test on unseen levels!
     parser.add_argument('--start_level', type=int, default=50) 
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=0)
     parser.add_argument('--nrollouts', '-nroll', type=int, default=50)
     parser.add_argument('--use', type=str, default="randcrop")
+    parser.add_argument('--netrand', dest='netrand', action='store_true')
 
 
     args = parser.parse_args()
@@ -71,7 +65,10 @@ def main():
     run_ID += '_load{}'.format(args.load_id)
     print(args.use)
     LOG_DIR = 'log/{}/test'.format(args.use)
-    policy = CnnPolicy
+    if not args.netrand:
+        policy = CnnPolicy
+    else:
+        policy = RandomCnnPolicy
     load_model = "log/{}/saved_{}_v{}.tar".format(args.use, args.use, args.load_id) 
 
     comm = MPI.COMM_WORLD

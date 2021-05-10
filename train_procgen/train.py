@@ -3,8 +3,6 @@ from os.path import join
 import json
 import tensorflow as tf
 
-from baselines.ppo2 import ppo2
-from baselines.common.models import build_impala_cnn
 from train_procgen.aug_ppo import learn
 
 from baselines.common.mpi_util import setup_mpi_gpus
@@ -41,12 +39,22 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
+    parser.add_argument('--arch', type=str, default="impala")
+    parser.add_argument('--no_bn', dest='use_batch_norm', action='store_false')
+    parser.add_argument('--dropout', type=float, default=0)
     parser.add_argument('--log_interval', type=int, default=10)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=int(-1))
+    parser.add_argument('--netrand', type=float, default=0)
+    parser.set_defaults(use_batch_norm=True)
 
     args = parser.parse_args()
+    arch = args.arch
+    dropout = args.dropout
+    use_batch_norm = args.use_batch_norm
+    netrand = args.netrand
+
     
     if args.nupdates:
         timesteps_per_proc = int(args.nupdates * num_envs * nsteps)
@@ -54,7 +62,6 @@ def main():
         args.total_tsteps = timesteps_per_proc ## use global 20_000_000 if not specified in args!
 
     run_ID = 'run_'+str(args.run_id).zfill(2)
-    ## select which ppo to use:
     agent_str = args.use
     LOG_DIR = join("log", agent_str, "train")
     save_model = join("log", agent_str, "saved_{}_v{}.tar".format(agent_str, args.run_id) )
@@ -101,19 +108,15 @@ def main():
     config.gpu_options.allow_growth = True
     sess = tf.compat.v1.Session(config=config)
 
-    if args.use == 'vanilla':
-        network = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    else:
-        network = None
-
     logger.info(venv.observation_space)
     logger.info("training")
     with sess.as_default():
         model = learn(
                 agent_str=agent_str,
+                use_netrand=netrand,
                 sess=sess,
                 env=venv,
-                network=network,
+                network=None,
                 total_timesteps=args.total_tsteps,
                 save_interval=1000,
                 nsteps=nsteps,
@@ -124,6 +127,9 @@ def main():
                 log_interval=args.log_interval,
                 ent_coef=ent_coef,
                 lr=learning_rate,
+                arch=arch, 
+                use_batch_norm=use_batch_norm, 
+                dropout=dropout,
                 cliprange=clip_range,
                 save_path=save_model,
                 load_path=load_path,
