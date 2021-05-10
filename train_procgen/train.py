@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from baselines.ppo2 import ppo2
 from baselines.common.models import build_impala_cnn
-from .aug_ppo import learn
+from train_procgen.aug_ppo import learn
 
 from baselines.common.mpi_util import setup_mpi_gpus
 from procgen import ProcgenEnv
@@ -41,7 +41,7 @@ def main():
     parser.add_argument('--test_worker_interval', type=int, default=0)
     parser.add_argument('--run_id', '-id', type=int, default=0)
     parser.add_argument('--use', type=str, default="randcrop")
-    parser.add_argument('--log_interval', type=int, default=20)
+    parser.add_argument('--log_interval', type=int, default=10)
     parser.add_argument('--nupdates', type=int, default=0)
     parser.add_argument('--total_tsteps', type=int, default=0)
     parser.add_argument('--load_id', type=int, default=int(-1))
@@ -135,36 +135,6 @@ def main():
                 comm=comm,
             )
         model.save(save_model)
-
-def main():
-    parser = argparse.ArgumentParser(description='Process procgen training arguments.')
-    parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--num_envs', type=int, default=64)
-    parser.add_argument('--distribution_mode', type=str, default='hard', choices=["easy", "hard", "exploration", "memory", "extreme"])
-    parser.add_argument('--num_levels', type=int, default=0)
-    parser.add_argument('--start_level', type=int, default=0)
-    parser.add_argument('--test_worker_interval', type=int, default=0)
-    parser.add_argument('--timesteps_per_proc', type=int, default=50_000_000)
-
-    args = parser.parse_args()
-
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-
-    is_test_worker = False
-    test_worker_interval = args.test_worker_interval
-
-    if test_worker_interval > 0:
-        is_test_worker = rank % test_worker_interval == (test_worker_interval - 1)
-
-    train_fn(args.env_name,
-        args.num_envs,
-        args.distribution_mode,
-        args.num_levels,
-        args.start_level,
-        args.timesteps_per_proc,
-        is_test_worker=is_test_worker,
-        comm=comm)
 
 if __name__ == '__main__':
     main()

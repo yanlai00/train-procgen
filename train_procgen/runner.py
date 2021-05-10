@@ -9,20 +9,17 @@ class Runner(AbstractEnvRunner):
         super().__init__(env=env, model=model, nsteps=nsteps)
         self.lam = lam
         self.gamma = gamma
-        self.aug_func = aug_func
-        self.obs = self.aug_func(self.obs)
-        for i in range(10):
-            plt.imsave("{}{}.jpg".format(str(aug_func.__name__), str(i)), self.obs[i]) #Sanity check!
+        if self.aug_func:
+            self.aug_func = aug_func
+            self.obs = self.aug_func(self.obs)
+            for i in range(10):
+                plt.imsave("{}{}.jpg".format(str(aug_func.__name__), str(i)), self.obs[i])
 
     def run(self):
-        # Here, we init the lists that will contain the mb of experiences
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
         mb_states = self.states
         epinfos = []
-        # For n in range number of steps
         for _ in range(self.nsteps):
-            # Given observations, get action value and neglopacs
-            # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
             actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones)
             mb_obs.append(self.obs.copy())
             mb_actions.append(actions)
@@ -30,15 +27,14 @@ class Runner(AbstractEnvRunner):
             mb_neglogpacs.append(neglogpacs)
             mb_dones.append(self.dones)
 
-            # Take actions in env and look the results
-            # Infos contains a ton of useful informations
             self.obs[:], rewards, self.dones, infos = self.env.step(actions)
-            self.obs[:] = self.aug_func(self.obs)
+            if self.aug_func:
+                self.obs[:] = self.aug_func(self.obs)
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
             mb_rewards.append(rewards)
-        #batch of steps to batch of rollouts
+
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
         mb_actions = np.asarray(mb_actions)
@@ -47,7 +43,6 @@ class Runner(AbstractEnvRunner):
         mb_dones = np.asarray(mb_dones, dtype=np.bool)
         last_values = self.model.value(self.obs, self.states, self.dones)
 
-        # discount/bootstrap off value fn
         mb_returns = np.zeros_like(mb_rewards)
         mb_advs = np.zeros_like(mb_rewards)
         lastgaelam = 0

@@ -22,72 +22,13 @@ from baselines import logger
 from mpi4py import MPI
 import argparse
 
-## random_ppo imports
 import train_procgen
-from train_procgen.random_ppo import safemean
-from train_procgen.crop_ppo import RandCropCnnPolicy, sf01, constfn
-from train_procgen.cutout_ppo import CutoutCnnPolicy
-from train_procgen.cross_ppo import CrossCnnPolicy
-from train_procgen.recenter_ppo import RecenterCnnPolicy
-from baselines.common.runners import AbstractEnvRunner
+from train_procgen import policies
+from train_procgen.utils import sf01, constfn, safemean
+from train_procgen.policies import CnnPolicy, RandomCnnPolicy, impala_cnn
 from collections import deque
-
-class TestRunner(AbstractEnvRunner):
-    def __init__(self, *, env, model, nsteps, gamma, lam):
-        super().__init__(env=env, model=model, nsteps=nsteps)
-        self.lam = lam
-        self.gamma = gamma
-        ##self.obs = rand_crop(self.obs) NO CROPPING OR CUTOUT AT TEST TIME
-
-    def run(self):
-        # Here, we init the lists that will contain the mb of experiences
-        mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
-        mb_states = self.states
-        epinfos = []
-        # For n in range number of steps
-        for _ in range(self.nsteps):
-            # Given observations, get action value and neglopacs
-            # We already have self.obs because Runner superclass run self.obs[:] = env.reset() on init
-            actions, values, self.states, neglogpacs = self.model.step(self.obs, self.states, self.dones)
-            mb_obs.append(self.obs.copy())
-            mb_actions.append(actions)
-            mb_values.append(values)
-            mb_neglogpacs.append(neglogpacs)
-            mb_dones.append(self.dones)
-
-            # Take actions in env and look the results
-            # Infos contains a ton of useful informations
-            self.obs[:], rewards, self.dones, infos = self.env.step(actions)
-            for info in infos:
-                maybeepinfo = info.get('episode')
-                if maybeepinfo: epinfos.append(maybeepinfo)
-            mb_rewards.append(rewards)
-        #batch of steps to batch of rollouts
-        mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
-        mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
-        mb_actions = np.asarray(mb_actions)
-        mb_values = np.asarray(mb_values, dtype=np.float32)
-        mb_neglogpacs = np.asarray(mb_neglogpacs, dtype=np.float32)
-        mb_dones = np.asarray(mb_dones, dtype=np.bool)
-        last_values = self.model.value(self.obs, self.states, self.dones)
-
-        # discount/bootstrap off value fn
-        mb_returns = np.zeros_like(mb_rewards)
-        mb_advs = np.zeros_like(mb_rewards)
-        lastgaelam = 0
-        for t in reversed(range(self.nsteps)):
-            if t == self.nsteps - 1:
-                nextnonterminal = 1.0 - self.dones
-                nextvalues = last_values
-            else:
-                nextnonterminal = 1.0 - mb_dones[t+1]
-                nextvalues = mb_values[t+1]
-            delta = mb_rewards[t] + self.gamma * nextvalues * nextnonterminal - mb_values[t]
-            mb_advs[t] = lastgaelam = delta + self.gamma * self.lam * nextnonterminal * lastgaelam
-        mb_returns = mb_advs + mb_values
-
-        return (*map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs)),
-            mb_states, epinfos)
+from train_procgen.runner import Runner
+from train_procgen.models import BaseModel as Model
 
 
 def main():
@@ -129,39 +70,9 @@ def main():
     run_ID = 'run_'+str(args.run_id).zfill(2)
     run_ID += '_load{}'.format(args.load_id)
     print(args.use)
-    if args.use == "randcrop":
-        LOG_DIR = 'log/randcrop/test'
-        load_model = "log/randcrop/saved_randcrop_v{}.tar".format(args.load_id) 
-        from train_procgen.crop_ppo import Model, Runner
-        policy = RandCropCnnPolicy
-    if args.use == "cutout":
-        LOG_DIR = 'log/cutout/test'
-        load_model = "log/cutout/saved_cutout_v{}.tar".format(args.load_id)
-        from train_procgen.cutout_ppo import Model, Runner
-        policy = CutoutCnnPolicy
-    if args.use == "cross":
-        LOG_DIR = 'log/cross/test'
-        load_model = "log/cross/saved_cross_v{}.tar".format(args.load_id)
-        from train_procgen.cross_ppo import Model, Runner
-        policy = CrossCnnPolicy
-    if args.use == "randcuts":
-        LOG_DIR = 'log/randcuts/test'
-        load_model = "log/randcuts/saved_randcuts_v{}.tar".format(args.load_id)
-        from train_procgen.randcuts_ppo import Model, Runner
-        policy = CrossCnnPolicy
-    if args.use == "recenter":
-        LOG_DIR = 'log/recenter/test'
-        load_model = "log/recenter/saved_recenter_v{}.tar".format(args.load_id)
-        from train_procgen.recenter_ppo import Model, Runner
-        policy = RecenterCnnPolicy
-    # if args.use == "vanilla":
-    #     LOG_DIR = 'log/vanilla/test'
-    #     load_model = "log/vanilla/saved_recenter_v{}.tar".format(args.load_id)
-    #     from baselines.ppo2 import Model, Runner
-    #     from baselines.common.models import build_impala_cnn
-    #     from baselines.common.policies import build_policy
-    #     network = lambda x: build_impala_cnn(x, depths=[16,32,32], emb_size=256)
-    #     policy = build_policy(venv, network)
+    LOG_DIR = 'log/{}/test'.format(args.use)
+    policy = CnnPolicy
+    load_model = "log/{}/saved_{}_v{}.tar".format(args.use, args.use, args.load_id) 
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -195,12 +106,11 @@ def main():
     logger.info("creating tf session")
     setup_mpi_gpus()
     config = tf.compat.v1.ConfigProto()
-    config.gpu_options.allow_growth = True #pylint: disable=E1101
+    config.gpu_options.allow_growth = True
     sess = tf.compat.v1.Session(config=config)
     sess.__enter__()
 
     logger.info("Testing")
-    ## Modified based on random_ppo.learn
     env = venv
     nenvs = env.num_envs
     ob_space = env.observation_space
@@ -216,7 +126,7 @@ def main():
 
     model.load(load_model)
     logger.info("Model pramas loaded from saved model: ", load_model)
-    runner = TestRunner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
+    runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam, aug_func=None)
 
     epinfobuf10 = deque(maxlen=10)
     epinfobuf100 = deque(maxlen=100)

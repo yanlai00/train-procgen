@@ -3,9 +3,6 @@ NOTE: for debug purposes, need to reset clean_loss to match baseline.ppo2!
     aka get rid of l2_loss and fm_losss
 Taking Kimin's netrand code https://github.com/pokaxpoka/netrand/blob/master/sources/random_ppo2.py
 and replacing openai/coinrun Configs with hard-coded params to fit openai/procgen env
-
-To simplify things, I didn't copy the choose_cnn logics, only import RandomCnnPolicy 
-from policies.py and always build random cnn policy here.
 """
 
 import time
@@ -21,6 +18,7 @@ from baselines.common.models import build_impala_cnn
 from baselines.common.policies import build_policy
 from baselines import logger
 from mpi4py import MPI
+from .utils import observation_input, sf01, constfn
 
 from baselines.common.runners import AbstractEnvRunner
 from baselines.common.tf_util import initialize
@@ -94,24 +92,17 @@ class Model(object):
         for p in params:
             shape = p.get_shape().as_list()
             num_params = np.prod(shape)
-            ## Comment this out to see all params
-            #logger.info('param', p, num_params)
             total_num_params += num_params
 
         logger.info('total num params:', total_num_params)
 
         l2_loss = tf.reduce_sum([tf.nn.l2_loss(v) for v in weight_params])
 
-        #loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
         loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef + l2_loss * L2_WEIGHT  + fm_loss * FM_COEFF
-        #clean_loss = clean_pg_loss - clean_entropy * ent_coef + clean_vf_loss * vf_coef + l2_loss * L2_WEIGHT + fm_loss * FM_COEFF
         clean_loss = clean_pg_loss - clean_entropy * ent_coef + clean_vf_loss * vf_coef + fm_loss * FM_COEFF + l2_loss * L2_WEIGHT
         
-        #if Config.SYNC_FROM_ROOT:
-        if 0:
-            trainer = MpiAdamOptimizer(MPI.COMM_WORLD, learning_rate=LR, epsilon=1e-5)
-        else:
-            trainer = tf.compat.v1.train.AdamOptimizer(learning_rate=LR, epsilon=1e-5)
+
+        trainer = tf.compat.v1.train.AdamOptimizer(learning_rate=LR, epsilon=1e-5)
 
         grads_and_var = trainer.compute_gradients(loss, params)
         clean_grads_and_var = trainer.compute_gradients(clean_loss, params)
@@ -255,19 +246,6 @@ class Runner(AbstractEnvRunner):
         return (*map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs)),
             mb_states, epinfos)
 
-def sf01(arr):
-    """
-    swap and then flatten axes 0 and 1
-    """
-    s = arr.shape
-    return arr.swapaxes(0, 1).reshape(s[0] * s[1], *s[2:])
-
-
-def constfn(val):
-    def f(_):
-        return val
-    return f
-
 
 def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95,
@@ -323,14 +301,6 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
     saved_key_checkpoints = [False] * len(checkpoints)
     init_rand = tf.variables_initializer([v for v in tf.global_variables() if 'randcnn' in v.name])
 
-    # if Config.SYNC_FROM_ROOT and rank != 0:
-    #     can_save = False
-
-    # def save_model(base_name=None):
-    #     base_dict = {'datapoints': datapoints}
-    #     utils.save_params_in_scopes(
-    #         sess, ['model'], Config.get_save_file(base_name=base_name), base_dict)
-
     for update in range(1, nupdates+1):
         assert nbatch % nminibatches == 0
         nbatch_train = nbatch // nminibatches
@@ -354,7 +324,6 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
 
         run_elapsed = time.time() - run_tstart
         run_t_total += run_elapsed
-        #logger.info('rollouts complete')
 
         mblossvals = []
 
@@ -440,19 +409,6 @@ def learn(*, network, env, nsteps, total_timesteps, ent_coef, lr,
                     logger.logkv('loss/' + lossname, lossval)
             logger.info('----\n')
             logger.dumpkvs()
- 
-
-        #if can_save:
-        if 0: ## not doing checkpoint saving yet
-            if save_interval and (update % save_interval == 0):
-                save_model()
-
-            for j, checkpoint in enumerate(checkpoints):
-                if (not saved_key_checkpoints[j]) and (step >= (checkpoint * 1e6)):
-                    saved_key_checkpoints[j] = True
-                    save_model(str(checkpoint) + 'M')
-
-    # save_model()
     if save_path:
         model.save(save_path)
 

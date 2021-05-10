@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from collections import deque
-from .policies import RandomCnnPolicy, CnnPolicy, EnsembleCnnPolicy, CrossCnnPolicy, RandCropCnnPolicy
+from .policies import RandomCnnPolicy, CnnPolicy
 USE_COLOR_TRANSFORM = 0
 from .utils import observation_input, sf01, constfn, safemean
 from .models import BaseModel
@@ -26,12 +26,12 @@ FM_COEFF = 0.002
 REAL_THRES = 0.1
 
 POLICIES = {
-    "cutout": CrossCnnPolicy,
-    "cross": CrossCnnPolicy,
-    "randcrop": RandCropCnnPolicy,
-    "recenter": CrossCnnPolicy,
-    "vanilla": RandomCnnPolicy,
-    "jitter": CrossCnnPolicy
+    "cutout": RandomCnnPolicy,
+    "cross": RandomCnnPolicy,
+    "randcrop": RandomCnnPolicy,
+    "recenter": RandomCnnPolicy,
+    "vanilla": CnnPolicy,
+    "jitter": RandomCnnPolicy
     # "random": random_ppo
     }
 
