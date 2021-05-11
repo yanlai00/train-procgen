@@ -14,6 +14,8 @@ class Runner(AbstractEnvRunner):
             self.obs = self.aug_func(self.obs)
             for i in range(10):
                 plt.imsave("{}{}.jpg".format(str(aug_func.__name__), str(i)), self.obs[i])
+        else:
+            self.aug_func = None
 
     def run(self, clean_flag=0):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]

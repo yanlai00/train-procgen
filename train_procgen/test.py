@@ -47,11 +47,15 @@ def main():
     parser.add_argument('--load_id', type=int, default=0)
     parser.add_argument('--nrollouts', '-nroll', type=int, default=50)
     parser.add_argument('--use', type=str, default="randcrop")
+    parser.add_argument('--arch', type=str, default="impala")
+    parser.add_argument('--no_bn', dest='use_batch_norm', action='store_false')
     parser.add_argument('--netrand', dest='netrand', action='store_true')
-
+    parser.set_defaults(use_batch_norm=True)
 
     args = parser.parse_args()
     args.total_timesteps = total_timesteps
+    arch = args.arch
+    use_batch_norm = args.use_batch_norm
     if args.nrollouts:
         total_timesteps = int(args.nrollouts * num_envs * nsteps)
     run_ID = 'run_'+str(args.run_id).zfill(2)
@@ -110,7 +114,7 @@ def main():
     model = Model(sess=sess, policy=policy, ob_space=ob_space, ac_space=ac_space, 
         nbatch_act=nenvs, nbatch_train=nbatch_train,
         nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
-        max_grad_norm=max_grad_norm)
+        max_grad_norm=max_grad_norm, arch=arch, use_batch_norm=use_batch_norm, dropout=0)
 
     model.load(load_model)
     logger.info("Model pramas loaded from saved model: ", load_model)

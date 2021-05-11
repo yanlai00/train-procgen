@@ -1,5 +1,5 @@
-LOAD=2
-USE="recenter"
+LOAD=1
+USE="vanilla"
 python train_procgen/test.py --start_level 1000 -id 0 --load_id ${LOAD} --use ${USE}
 python train_procgen/test.py --start_level 10000 -id 1 --load_id ${LOAD} --use ${USE}
 python train_procgen/test.py --start_level 20000 -id 2 --load_id ${LOAD} --use ${USE}
