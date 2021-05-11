@@ -1,0 +1,6 @@
+gym==0.15.4
+procgen
+tensorflow-gpu==1.15.0
+pytest
+matplotlib
+https://github.com/openai/baselines/archive/9ee399f5b20cd70ac0a871927a6cf043b478193f.zip
