@@ -108,9 +108,8 @@ class BaseModel(object):
         initialize()
 
 class RandomModel(object):
-    def __init__(self, *, policy, ob_space, ac_space, nbatch_act, nbatch_train,
+    def __init__(self, *, sess, policy, ob_space, ac_space, nbatch_act, nbatch_train,
                 nsteps, ent_coef, vf_coef, max_grad_norm, arch, use_batch_norm, dropout):
-        sess = tf.compat.v1.get_default_session()
         
         train_model = policy(sess, ob_space, ac_space, nbatch_train, nsteps, arch, use_batch_norm, dropout)
             
