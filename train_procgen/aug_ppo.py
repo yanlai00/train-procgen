@@ -8,10 +8,10 @@ from .models import BaseModel, RandomModel
 from .runner import Runner
 from baselines import logger
 
+# from .data_augs import recenter, vanilla, crosscut, cutout, jitter, randcrop
+from .data_augs import *
 
-from .data_augs import recenter, vanilla, crosscut, cutout, jitter, randcrop
-
-AUG_FUNCs = {
+AUG_FUNCS = {
     "cutout": cutout,
     "cross": crosscut,
     "randcrop": randcrop,
@@ -25,7 +25,7 @@ def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
             save_interval=0, save_path=None, load_path=None, **network_kwargs):
 
-    aug_func = AUG_FUNCs[agent_str]
+    aug_func = AUG_FUNCS[agent_str]
 
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
