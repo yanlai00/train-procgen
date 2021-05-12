@@ -17,7 +17,8 @@ AUG_FUNCS = {
     "randcrop": randcrop,
     "recenter": recenter,
     "vanilla": vanilla,
-    "jitter": jitter
+    "jitter": jitter,
+    "grayscale": gray_scale
     }
 
 def learn(*, agent_str, use_netrand, network, sess, env, nsteps, total_timesteps, ent_coef, lr, arch='impala', use_batch_norm=True, dropout=0, 

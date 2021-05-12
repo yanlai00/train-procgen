@@ -78,3 +78,15 @@ def augment(obs):
     cpy2 = randcrop(obs.copy())
     cpy3 = cutout(obs.copy())
     return np.concatenate([cpy1, cpy2, cpy3, obs], axis=0)
+
+def gray_scale(obs):
+    # imgs: b x c x h x w
+    b, c, h, w = obs.shape
+    frames = c // 3
+
+    imgs = obs.view([b, frames, 3, h, w])
+    imgs = imgs[:, :, 0, ...] * 0.2989 + imgs[:, :, 1, ...] * 0.587 + imgs[:, :, 2, ...] * 0.114
+    # assert len(imgs.shape) == 3, imgs.shape
+    imgs = imgs[:, :, None, :, :]
+    imgs = imgs * np.ones([1, 1, 3, 1, 1], dtype=imgs.dtype)  # broadcast tiling
+    return imgs
